@@ -7,7 +7,7 @@ Security fixes ship in the next release. Use the latest release.
 ## Report a vulnerability
 
 Do not disclose exploit details in a public issue. Report privately through
-[Report a vulnerability](https://github.com/thekannen/battlemap-mcp/security/advisories/new)
+[Report a vulnerability](https://github.com/immortalBan/battlemap-mcp/security/advisories/new)
 (the repository's **Security** tab).
 
 Include the affected version and component, operating system, reproduction

@@ -23,7 +23,7 @@ from pathlib import Path
 
 from . import __version__, installer, user_settings
 
-REPOSITORY = "thekannen/battlemap-mcp"
+REPOSITORY = "immortalBan/battlemap-mcp"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases/latest"
 API_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 OPT_OUT = "BATTLEMAP_MCP_UPDATE_CHECK"

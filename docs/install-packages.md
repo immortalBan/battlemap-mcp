@@ -18,7 +18,7 @@ connect and open it again. Step 6 describes what a block looks like.
 
 The Windows companion is unsigned, so SmartScreen warnings there are expected.
 
-1. From the same [release](https://github.com/thekannen/battlemap-mcp/releases),
+1. From the same [release](https://github.com/immortalBan/battlemap-mcp/releases),
    download `battlemap-mcp-mod-<version>.zip` and your Mac companion:
    `macos-arm64.tar.gz` for Apple Silicon, or `macos-x64.tar.gz` for Intel.
    **Apple menu → About This Mac** shows your chip; in Terminal, `uname -m`
@@ -142,7 +142,7 @@ The earlier setup used the Linux editor, not the Windows editor through Wine.
 
 ### Download and extract
 
-1. Open [Releases](https://github.com/thekannen/battlemap-mcp/releases) and
+1. Open [Releases](https://github.com/immortalBan/battlemap-mcp/releases) and
    download `battlemap-mcp-mod-<version>.zip` and
    `battlemap-mcp-companion-<version>-linux-x64.tar.gz` from the same release's **Assets**.
    This package is for Intel/AMD 64-bit Linux; there is no Linux ARM package.

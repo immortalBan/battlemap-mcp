@@ -2,8 +2,8 @@
 
 > **This is a fork** of [thekannen/battlemap-mcp](https://github.com/thekannen/battlemap-mcp)
 > with changes that help the assistant find and understand assets faster. See
-> [What this fork adds](#what-this-fork-adds). Everything else, including the
-> releases linked below, is the upstream project's work.
+> [What this fork adds](#what-this-fork-adds). Everything else is the upstream
+> project's work. Downloads below are this fork's releases, for Windows and Linux.
 
 An AI collaborator for your Dungeondraft maps: a local bridge that lets your AI assistant (Claude Desktop, Claude Code, Codex, OpenCode, or any other MCP client) build, inspect, and refine the map you have open, using assets you already own.
 
@@ -101,34 +101,33 @@ those gaps.
   and record what you learn; compute flush offsets from wall thickness; read
   dressing scale from sizes; keep tree canopies off buildings.
 
-The fork changes the mod as well as the companion. The upstream release
-downloads do not include these changes, so to use them run from source as
-described in [Developer installation](docs/developer-installation.md), then
-install the mod from the same checkout and restart Dungeondraft. The project
-remains under the upstream [MIT license](LICENSE).
+The fork changes the mod as well as the companion, so install both from this
+fork's [Releases](https://github.com/immortalBan/battlemap-mcp/releases), from
+version 1.4.0 on. Upstream downloads do not include these changes. The fork
+publishes Windows and Linux companions; it has no macOS companion and no Claude
+desktop extension or Claude Code plugin, because those are signed and built by
+the upstream maintainer. On macOS, run from source as described in
+[Developer installation](docs/developer-installation.md). The project remains
+under the upstream [MIT license](LICENSE).
 
 ## Get started
 
-You need **Dungeondraft 1.2.0.1** and an AI app that can run local MCP servers, on the same computer. There are three ways to connect your AI app. **Pick one:** with two of them, your assistant sees every tool twice.
+You need **Dungeondraft 1.2.0.1** and an AI app that can run local MCP servers, on the same computer. Connect it with **the companion download**, for Codex, Claude Code, OpenCode and other MCP apps: follow steps 1 to 5 below. Codex, Claude Code and OpenCode connect with one double-click; other apps need a one-time manual setup ([other clients](docs/install-packages.md#other-mcp-clients)). This fork has no Claude desktop extension or Claude Code plugin; see [Install from Claude](#install-from-claude).
 
-- **The companion download**, for Codex, Claude Code, OpenCode and other MCP apps: follow steps 1 to 5 below. Codex, Claude Code and OpenCode connect with one double-click; other apps need a one-time manual setup ([other clients](docs/install-packages.md#other-mcp-clients)).
-- **The Claude desktop app:** install the extension. See [Install from Claude](#install-from-claude).
-- **Claude Code:** install the plugin. See [Install from Claude](#install-from-claude).
+The companion needs the mod in Dungeondraft, as in step 2.
 
-Every way needs the mod in Dungeondraft, as in step 2.
-
-Follow the Windows instructions below, or choose [macOS](docs/install-packages.md#macos) or [Linux](docs/install-packages.md#linux).
+Follow the Windows instructions below, or choose [Linux](docs/install-packages.md#linux). This fork does not publish a macOS companion.
 
 ### 1. Download two files
 
-Open [Releases](https://github.com/thekannen/battlemap-mcp/releases), expand **Assets**, and download these two files from the **same release**:
+Open [Releases](https://github.com/immortalBan/battlemap-mcp/releases), expand **Assets**, and download these two files from the **same release**:
 
 | Download | What it does |
 | --- | --- |
 | `battlemap-mcp-mod-<version>.zip` | Adds MCP Bridge to Dungeondraft. |
 | `battlemap-mcp-companion-<version>-windows-x64.zip` | Connects your AI app to the mod. |
 
-Skip the **Source code** downloads. You do not need them. Installing from Claude instead? Download only the mod ZIP and see [Install from Claude](#install-from-claude).
+Skip the **Source code** downloads. You do not need them.
 
 ### 2. Put the mod in your mods folder
 
@@ -166,11 +165,11 @@ Do not run files while they are still inside the ZIP. Do not double-click `battl
 
 If **Connect Codex** says automatic connection is unavailable, you can finish in the app without installing another tool: open **Settings → MCP servers → Add server**, choose **STDIO**, name it `battlemap`, and paste the **Command** path shown by the Connect window. Leave arguments empty, save, and restart the connection. See [OpenAI's MCP setup instructions](https://developers.openai.com/codex/mcp/).
 
-**Connect Claude Code** sets up the Claude Code coding app only. For the Claude desktop chat app, use the extension instead: see [Install from Claude](#install-from-claude). See [client setup help](docs/install-packages.md#client-help) for an existing Claude Code connection, or [other MCP clients](docs/install-packages.md#other-mcp-clients).
+**Connect Claude Code** sets up the Claude Code coding app only; this fork has no extension for the Claude desktop chat app (see [Install from Claude](#install-from-claude)). See [client setup help](docs/install-packages.md#client-help) for an existing Claude Code connection, or [other MCP clients](docs/install-packages.md#other-mcp-clients).
 
 ### 4. Check the connection
 
-With a map open in Dungeondraft, double-click **Check connection** in the companion folder. It should say **Ready: connected to Battlemap MCP Bridge**. Installed from Claude? There is no Check connection file; go straight to the prompt below.
+With a map open in Dungeondraft, double-click **Check connection** in the companion folder. It should say **Ready: connected to Battlemap MCP Bridge**.
 
 Then start a new conversation in your AI app and ask:
 
@@ -200,21 +199,16 @@ Pick packs that suit the scene rather than all of them: including a very large l
 
 ### Install from Claude
 
-Use this instead of the companion download and its Connect files, not as well. You still need the mod in Dungeondraft.
+Not available in this fork. The upstream project ships a Claude desktop extension (`.mcpb`) and a Claude Code plugin, but both carry upstream's companions without this fork's changes, and the macOS companions inside them are signed by the upstream maintainer. With Claude Code, use the companion download and **Connect Claude Code** in step 3.
 
-- **Claude desktop app:** from the same release, download `battlemap-mcp-<version>.mcpb` and open it. Claude shows it under **Settings → Extensions**; approve the install. The extension gives Claude the map tools; it does not include the map-making skills.
-- **Claude Code:** run `/plugin marketplace add thekannen/battlemap-mcp`, then `/plugin install battlemap-mcp@battlemap-mcp`, and restart Claude Code. The plugin brings the map tools and the map-making skills.
+If you installed the upstream plugin or extension before, remove it first, or every tool appears twice.
 
-**The mod:** install it as in step 2, or ask your assistant to *install the Dungeondraft bridge*. It shows you what it will change and asks first, and if you already have a bridge it keeps a backup of the old one. Then fully quit and reopen Dungeondraft, open a map, and ask the prompt in step 4.
-
-**Switching from a Connect install?** Remove the old connection first, or every tool appears twice: in Claude Code, run `claude mcp remove --scope user battlemap`.
-
-**Updating:** your assistant tells you when a new version is out. Update the plugin with `/plugin`, or download and open the new `.mcpb`, then ask your assistant to install the bridge again and restart Dungeondraft.
+**Updating:** your assistant tells you when a new version of this fork is out. Download the new mod and companion, replace both, ask your assistant to install the bridge again if you prefer, and restart Dungeondraft.
 
 ### Platform limits
 
-- **Windows:** the companion is unsigned. When you first open **Connect** or **Check connection**, Windows may warn you, for example with SmartScreen's **Windows protected your PC**. If you downloaded both files from this project's [Releases](https://github.com/thekannen/battlemap-mcp/releases) page, choose **More info → Run anyway**. To confirm a download is the published one, compare `Get-FileHash <file>` in PowerShell with the release's `SHA256SUMS`. Do not turn off SmartScreen or other Windows security.
-- **macOS:** the companion is signed with an Apple Developer ID and notarized by Apple. The first time it runs, macOS confirms that with Apple over the internet. If your Mac is offline at that moment, macOS can block it; connect and open it again. See [macOS install](docs/install-packages.md#macos).
+- **Windows:** the companion is unsigned. When you first open **Connect** or **Check connection**, Windows may warn you, for example with SmartScreen's **Windows protected your PC**. If you downloaded both files from this project's [Releases](https://github.com/immortalBan/battlemap-mcp/releases) page, choose **More info → Run anyway**. To confirm a download is the published one, compare `Get-FileHash <file>` in PowerShell with the release's `SHA256SUMS`. Do not turn off SmartScreen or other Windows security.
+- **macOS:** this fork publishes no macOS companion. Run from source as described in [Developer installation](docs/developer-installation.md).
 - **Linux:** validated on Ubuntu 24.04 under WSL2 only. Native Linux desktops and other distributions have not been tested.
 
 ### If something does not work
@@ -233,7 +227,6 @@ Use this instead of the companion download and its Connect files, not as well. Y
 | Windows: the companion says it cannot load `battlemap-mcp.pkg` | The folder is incomplete. Extract the whole companion ZIP again and keep `battlemap-mcp.exe`, `battlemap-mcp.pkg` and `_internal` together. |
 | The assistant keeps using the same few objects | The map probably includes no asset packs. See [Include your asset packs](#5-include-your-asset-packs). |
 | You asked to see the map but no picture appeared | The assistant does see it, but your AI app folds images inside the tool call — expand the tool call to view it. The assistant is also given the saved file's location, so you can ask it for the file. |
-| macOS blocks the companion | Not a crash. If this is the first launch, make sure the Mac is online so macOS can confirm the notarization with Apple, then open it again. From Finder a block is a "cannot be verified" dialog; from Terminal it is only `Killed: 9` and exit code 137, with no message. See [macOS install](docs/install-packages.md#macos), step 6. |
 
 [Update, move, or uninstall](docs/install-packages.md#update-or-remove).
 

@@ -82,6 +82,19 @@ def test_a_damaged_notes_file_reads_as_empty_and_bad_entries_are_dropped():
     assert list(asset_notes.load()) == [SHELF]
 
 
+def test_a_rewrite_inside_one_timestamp_tick_is_still_read():
+    """CI on Windows: two writes sharing an mtime served the first file's notes."""
+    import os
+
+    notes_file = asset_notes.path()
+    notes_file.write_text(json.dumps({"assets": {}}), encoding="utf-8")
+    assert asset_notes.load() == {}
+    stamp = notes_file.stat().st_mtime_ns
+    notes_file.write_text(json.dumps({"assets": {SHELF: {"note": "corner"}}}), encoding="utf-8")
+    os.utime(notes_file, ns=(stamp, stamp))
+    assert list(asset_notes.load()) == [SHELF]
+
+
 # --- list_assets ------------------------------------------------------------
 
 

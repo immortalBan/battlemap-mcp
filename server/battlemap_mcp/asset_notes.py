@@ -34,7 +34,10 @@ FORMAT_VERSION = 1
 MAX_NOTE_CHARS = 500
 MAX_ROLE_CHARS = 40
 
-_cache: tuple[float, dict[str, dict]] | None = None
+# Keyed on the file's modification time AND size: two writes inside one
+# timestamp tick (coarse on some Windows file systems) share an mtime, and
+# keying on that alone served the first file's notes for the second.
+_cache: tuple[tuple[int, int], dict[str, dict]] | None = None
 
 
 def path() -> Path:
@@ -66,17 +69,18 @@ def load() -> dict[str, dict]:
     """Every note by asset path, re-read when the file changes; {} if there is none."""
     global _cache
     try:
-        mtime = path().stat().st_mtime
+        stat = path().stat()
     except OSError:
         _cache = None
         return {}
-    if _cache is not None and _cache[0] == mtime:
+    key = (stat.st_mtime_ns, stat.st_size)
+    if _cache is not None and _cache[0] == key:
         return _cache[1]
     try:
         data = _clean(json.loads(path().read_text(encoding="utf-8")))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         data = {}
-    _cache = (mtime, data)
+    _cache = (key, data)
     return data
 
 

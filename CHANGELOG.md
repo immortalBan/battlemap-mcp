@@ -4,6 +4,38 @@ What changed in each release, written for the people using it. Versions cover
 the companion, the Dungeondraft mod and the map-making skills together; the
 wire protocol between them is versioned separately and is currently 25.
 
+## 1.4.0 — 2026-10-19
+
+The first release of the immortalBan fork: your assistant finds the right
+assets faster, measures them without test placements, and remembers what it
+learned about them from one map to the next.
+
+**Asset sizes up front.** Asset searches now report how big each asset is, in
+tiles at its natural scale, and the preview sheet labels every cell with its
+size. Your assistant can choose scale and set shelves flush against walls
+without placing a test copy first. Walls report their thickness.
+
+**Searches that use the library's words.** When a search finds nothing, your
+assistant tries the names asset packs usually use for the same thing — a rug
+is often a carpet, a bookshelf a bookcase, a column a pillar — and tells you
+which word it used. It can also limit a search to one pack, to keep a map in
+one art style.
+
+**Notes about assets that last.** When your assistant discovers something an
+asset's name does not say — a bookcase that is really a corner unit, a
+candelabra drawn from the side — it can write it down. The notes stay on your
+computer and appear next to that asset in later searches and previews, in any
+map.
+
+**Updated map-making skills.** They check those notes and sizes before
+choosing assets, place furniture flush against walls of any thickness, and
+keep tree canopies off buildings.
+
+**Fork releases.** Downloads, update notices and security reports now point to
+this fork. Windows and Linux companions are published; there is no macOS
+companion or Claude extension in this fork. The mod keeps its identity, so it
+replaces an installed MCP Bridge in place.
+
 ## 1.3.0 — 2026-10-11
 
 Export and rebuild Universal VTT files, check a map before you open it, and
