@@ -1,5 +1,10 @@
 # battlemap-mcp
 
+> **This is a fork** of [thekannen/battlemap-mcp](https://github.com/thekannen/battlemap-mcp)
+> with changes that help the assistant find and understand assets faster. See
+> [What this fork adds](#what-this-fork-adds). Everything else, including the
+> releases linked below, is the upstream project's work.
+
 An AI collaborator for your Dungeondraft maps: a local bridge that lets your AI assistant (Claude Desktop, Claude Code, Codex, OpenCode, or any other MCP client) build, inspect, and refine the map you have open, using assets you already own.
 
 ## Support creators first
@@ -67,6 +72,40 @@ Describe the placement rules once and let the assistant apply them across a larg
 > Scatter small rocks and fallen branches along the forest edge, varying their rotation and spacing. Keep the path and clearing free, use only assets available to this map, and avoid a uniform repeated pattern.
 
 The included art-direction and visual-review skills help the assistant plan and inspect its work. You decide which suggestions to use and when the map is finished. See [known limitations](docs/KNOWN_LIMITATIONS.md) for practical constraints.
+
+## What this fork adds
+
+Building a furnished library from a one-line brief, the assistant spent much of
+its time on asset lookup rather than on the map: a dozen searches that came back
+empty because the library says `carpet` where the brief says `rug`, test objects
+placed only to read how big something is, and previews of the same corner
+bookcase that every new session would have to rediscover. This fork closes
+those gaps.
+
+- **Sizes up front.** `list_assets` returns each asset's texture size in woxels
+  (`sizes`; for walls, length and thickness), and `preview_assets` captions its
+  sheet with every cell's path, size, drawn area and notes. Scale and flush
+  placement against a wall no longer need a test placement.
+- **One art family at a time.** `list_assets(pack=...)` limits a search to one
+  pack the map includes, by id or name.
+- **Other words for the same thing.** A search term that finds nothing is
+  retried under the names asset libraries commonly use instead (`rug` →
+  `carpet`, `bookshelf` → `bookcase`, `column` → `pillar`). The reply names the
+  word that matched, so a swap is never silent.
+- **Notes that outlast a session.** `annotate_assets` records what an asset
+  turned out to be ("L-shaped corner unit", "drawn side-on, avoid"), and
+  `list_asset_notes` lists those notes. They are kept on your computer, in the
+  integration's state folder, and appear beside the asset in later listings and
+  previews.
+- **Skills updated to match:** look up notes and sizes before choosing assets
+  and record what you learn; compute flush offsets from wall thickness; read
+  dressing scale from sizes; keep tree canopies off buildings.
+
+The fork changes the mod as well as the companion. The upstream release
+downloads do not include these changes, so to use them run from source as
+described in [Developer installation](docs/developer-installation.md), then
+install the mod from the same checkout and restart Dungeondraft. The project
+remains under the upstream [MIT license](LICENSE).
 
 ## Get started
 
