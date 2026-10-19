@@ -66,18 +66,36 @@ and four rounds of test placements finding that out. In order:
    cleared with an empty note.
 
 **Load the build tools in one go.** Most battlemap tools are deferred. Fetch the
-set a build uses in a single `ToolSearch` select — including `move_element`,
-`move_elements`, `modify_object` and `delete_elements`, which a rework needs —
-rather than discovering each one mid-build. A missing `move_element` is how one
-build fell back to deleting and re-placing objects it only needed to shift.
+set a build uses in a single `ToolSearch` select — the furnishing helpers
+`place_along_wall`, `seat_around`, `dress_surface`, the batch light tools for
+phase 8, and `list_groups`, `move_element`, `move_elements`,
+`modify_object` and `delete_elements`, which a rework needs — rather than
+discovering each one mid-build. A missing `move_element` is how one build fell
+back to deleting and re-placing objects it only needed to shift.
 
-**Script a room of more than about twenty placements.** Compute positions in a
-short script from the room's wall lines and the `sizes` you read, write them to
-a JSON file and pass it as `place_objects(file=...)` (an absolute path; on
-Windows the long form, not an `~1` short name). Batch ids come back contiguous
-in entry order, so record which id range is which group — "south tables",
-"wall shelving" — as you place. A rework then deletes a group by its range
-instead of reverse-engineering ids from the listing.
+**Let the helpers do the furniture arithmetic.** `place_along_wall` lines a
+stretch of wall flush and facing the room, clear of doors, windows, corners and
+what already stands there; `seat_around` spaces chairs from a placed table's
+real edges; `dress_surface` keeps books and candles inside a desk top, one
+layer up. Each is one undoable batch and takes `dry_run` to see the plan
+first. A hand-computed run of shelving is how one build collided two rows in a
+corner and set a chair half on its desk.
+
+**File every zone under a group.** Pass `group="hall/south tables"` to each
+placement — place_objects, the helpers, scatter_objects, the lights. A rework
+is then `delete_elements(group=...)` or `move_elements(group=...)`, and
+`fit_elements(group=...)` frames the zone for review; `list_groups` shows what
+exists. Groups last for this companion session and are not saved in the map,
+so finish a zone's rework in the session that built it.
+
+**Script only what the helpers do not cover.** For an irregular arrangement,
+compute positions from the room's wall lines and the `sizes` you read, write
+them to a JSON file and pass it as `place_objects(file=...)` (an absolute path;
+on Windows the long form, not an `~1` short name), with a `group`.
+
+**Aim the camera with the screenshot.** `screenshot(rect=[x, y, w, h])` or
+`screenshot(center=[x, y], tiles_across=14)` frames and captures in one call;
+about 12-16 tiles across is token zoom for reviewing a room piece by piece.
 
 **Check the grid the user snaps to.** Call `get_snap_settings`. When the
 Custom Snap Mod is enabled (`auto_snaps: true`), the user works on its grid —

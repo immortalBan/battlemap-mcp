@@ -54,6 +54,18 @@ def _isolated_asset_notes(monkeypatch, tmp_path):
     monkeypatch.setattr(asset_notes, "_cache", None)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_session_registries():
+    """Groups and intentional lights are per companion session; tests share a process."""
+    from battlemap_mcp import groups, server
+
+    groups.clear()
+    server._INTENTIONAL_LIGHTS.clear()
+    yield
+    groups.clear()
+    server._INTENTIONAL_LIGHTS.clear()
+
+
 @pytest.fixture
 def create_file_symlink_or_skip():
     return _create_file_symlink_or_skip

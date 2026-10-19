@@ -51,7 +51,7 @@ const CREATE_CMDS := [
 	"place_object", "draw_wall", "draw_path", "add_light",
 	"add_portal", "add_roof", "add_text", "duplicate_object",
 ]
-const TRANSFORM_CMDS := ["move_element", "modify_object"]
+const TRANSFORM_CMDS := ["move_element", "modify_object", "modify_light"]
 
 const DELETE_CMDS := ["delete_element"]
 
@@ -64,7 +64,7 @@ const CAVE_CMDS := ["dig_cave", "clear_caves", "set_cave_entrance"]
 const MATERIAL_DEFAULT_LAYER := -400
 
 const COMPOSITE_CMDS := ["place_pattern", "scatter_objects", "build_room", "place_prefab",
-	"place_objects"]
+	"place_objects", "add_lights"]
 
 const DEFAULT_PATTERN_TINT := Color(0.62, 0.5, 0.34)
 # A mask pixel darker than this cannot show a tint (the shader paints r * tint).
@@ -1263,6 +1263,12 @@ func _apply_props(node, snap):
 	if snap.get("modulate") != null:
 		# Same best-effort rationale as the colour restore above.
 		_set_node_modulate(node, snap["modulate"])
+	if snap.get("light") != null and _is_light(node):
+		var held = snap["light"]
+		node.color = held["color"]
+		node.energy = held["energy"]
+		node.texture_scale = held["texture_scale"]
+		node.shadow_enabled = held["shadow_enabled"]
 
 func _generate_dungeon(req : Dictionary) -> Dictionary:
 	if not Global.Editor.Tools.has("Generator"):
@@ -2122,6 +2128,9 @@ func _snapshot(node) -> Dictionary:
 	var col = _read_node_color(node)
 	if col != null:
 		s["color"] = col
+	if _is_light(node):
+		s["light"] = { "color": node.color, "energy": node.energy,
+			"texture_scale": node.texture_scale, "shadow_enabled": node.shadow_enabled }
 	return s
 
 # Dispatch with a guard so a bad command can never take down the TCP loop.
@@ -2222,6 +2231,8 @@ func _safe_dispatch(req : Dictionary) -> Dictionary:
 		"draw_wall": return _draw_wall(req)
 		"draw_path": return _draw_path(req)
 		"add_light": return _add_light(req)
+		"add_lights": return _add_lights(req)
+		"modify_light": return _modify_light(req)
 		"add_portal": return _add_portal(req)
 		"add_roof": return _add_roof(req)
 		"add_text": return _add_text(req)
@@ -2542,6 +2553,21 @@ func _preview_assets(req : Dictionary) -> Dictionary:
 	var missing := []
 	var colorable := []
 	var sizes := {}
+	# true_scale: one factor for the whole sheet, from its largest asset, so a
+	# four-tile cart and a book are seen at their real proportions instead of
+	# each being fitted to the same square.
+	var true_scale = bool(req.get("true_scale", false))
+	var sheet_factor := -1.0
+	if true_scale:
+		var largest := 1.0
+		for candidate in assets:
+			var probe = _asset_tex(category, str(candidate))
+			if probe == null:
+				probe = _unincluded_pack_texture(str(candidate))
+			if probe != null:
+				var dims = probe.get_size()
+				largest = max(largest, max(dims.x, dims.y))
+		sheet_factor = float(cell) / largest
 	for i in range(assets.size()):
 		var asset = str(assets[i])
 		var tex = _asset_tex(category, asset)
@@ -2579,6 +2605,8 @@ func _preview_assets(req : Dictionary) -> Dictionary:
 		# Fit inside the cell preserving aspect, so a long table is not squashed
 		# into a square and judged on a shape it does not have.
 		var factor = min(float(cell) / float(w), float(cell) / float(h))
+		if sheet_factor > 0.0:
+			factor = sheet_factor
 		var nw = int(max(1, int(float(w) * factor)))
 		var nh = int(max(1, int(float(h) * factor)))
 		img.resize(nw, nh, Image.INTERPOLATE_BILINEAR)
@@ -2596,7 +2624,8 @@ func _preview_assets(req : Dictionary) -> Dictionary:
 		return _err("save_png failed (err %d): %s" % [err, path])
 	return _ok({ "path": path, "columns": columns, "rows": rows, "cell_px": cell,
 		"count": assets.size(), "colorable": colorable, "missing": missing,
-		"sizes": sizes,
+		"sizes": sizes, "true_scale": true_scale,
+		"woxels_per_cell": (float(cell) / sheet_factor) if sheet_factor > 0.0 else null,
 		"width": sheet.get_width(), "height": sheet.get_height() })
 
 # Wall textures are either greyscale masks the wall tool colours at placement or
@@ -3914,10 +3943,32 @@ func _place_objects(req : Dictionary) -> Dictionary:
 				"from list_assets(category='Objects').") % [i, asset, verdicts[asset]])
 
 	var placed := []
+	var lit := []
 	for i in range(items.size()):
 		var res = _place_object(items[i])
+		# A light the entry asked for is made with its object, so the source and
+		# its glow share one undo step and cannot drift apart.
+		if res.get("ok", false) and typeof(items[i].get("light")) == TYPE_DICTIONARY:
+			var spec = items[i]["light"]
+			var at = res["result"]["position"]
+			var light_req := {
+				"x": float(at[0]) + float(spec.get("offset_x", 0.0)),
+				"y": float(at[1]) + float(spec.get("offset_y", 0.0)),
+			}
+			for key in ["color", "energy", "range", "shadows", "asset"]:
+				if spec.has(key):
+					light_req[key] = spec[key]
+			var lres = _add_light(light_req)
+			if lres.get("ok", false):
+				res["result"]["light_id"] = lres["result"]["id"]
+				lit.append(int(lres["result"]["id"]))
+			else:
+				_delete_element({ "id": int(res["result"]["id"]) })
+				res = lres
 		if not res.get("ok", false):
 			# Roll back, so the batch is all-or-nothing like scatter_objects.
+			for light_id in lit:
+				_delete_element({ "id": light_id })
 			var stuck := []
 			for made in placed:
 				if not _delete_element({ "id": int(made["id"]) }).get("ok", false):
@@ -3932,6 +3983,8 @@ func _place_objects(req : Dictionary) -> Dictionary:
 				str(res.get("error"))])
 		var out = res["result"]
 		var entry := { "id": int(out["id"]), "position": out["position"] }
+		if out.has("light_id"):
+			entry["light_id"] = int(out["light_id"])
 		# Carry the per-item warnings that matter for the next decision: a
 		# colourable asset placed without a colour is a flat red shape, and
 		# colour cannot be added afterwards.
@@ -4138,6 +4191,58 @@ func _add_light(req : Dictionary) -> Dictionary:
 	if tex != null:
 		light.texture = tex
 	return _ok({ "id": _id(light), "position": _vec(light.position) })
+
+# Many lights in ONE undo step: a pass of candles is one decision, and undoing
+# it one light at a time pushed the build out of the history.
+func _add_lights(req : Dictionary) -> Dictionary:
+	var items = req.get("lights", [])
+	if typeof(items) != TYPE_ARRAY or items.empty():
+		return _err("'lights' must be a non-empty array of {x, y, ...} entries")
+	if items.size() > MAX_BATCH_ITEMS:
+		return _err("'lights' is capped at %d per call" % MAX_BATCH_ITEMS)
+	if Global.World.GetCurrentLevel() == null:
+		return _err("no map open")
+	for i in range(items.size()):
+		if typeof(items[i]) != TYPE_DICTIONARY:
+			return _err("lights[%d] must be an object" % i)
+		var bad = _bad_color(items[i], ["color"])
+		if bad != null:
+			return _err("lights[%d]: %s" % [i, bad["error"]])
+	var made := []
+	for item in items:
+		var res = _add_light(item)
+		if not res.get("ok", false):
+			for done in made:
+				_delete_element({ "id": int(done["id"]) })
+			return _err("a light failed after %d were added, all removed again: %s"
+				% [made.size(), str(res.get("error"))])
+		made.append(res["result"])
+	var ids := []
+	for done in made:
+		ids.append(done["id"])
+	return _ok({ "added": made.size(), "ids": ids, "lights": made })
+
+# The way _describe recognises a light: by the properties every Light2D has,
+# not by class, which Dungeondraft does not promise.
+func _is_light(node) -> bool:
+	return node != null and node.get("energy") != null and node.get("texture_scale") != null 		and node.get("shadow_enabled") != null
+
+func _modify_light(req : Dictionary) -> Dictionary:
+	var bad_light_color = _bad_color(req, ["color"])
+	if bad_light_color != null: return bad_light_color
+	var node = _resolve(req)
+	if node == null: return _err("no element with id " + str(req.get("id")))
+	if not _is_light(node):
+		return _err("element %s is not a light; modify_object changes objects" % str(req.get("id")))
+	if req.has("color") and str(req.get("color", "")) != "":
+		node.color = _color(req["color"], node.color)
+	if req.has("energy"):
+		node.energy = float(req["energy"])
+	if req.has("range"):
+		node.texture_scale = float(req["range"])
+	if req.has("shadows"):
+		node.shadow_enabled = bool(req["shadows"])
+	return _ok(_describe(node))
 
 func _nearest_wall_segment(level, pos : Vector2):
 	var best = null
@@ -4401,6 +4506,26 @@ func _scatter_objects(req : Dictionary) -> Dictionary:
 	var rmax = float(req.get("rotation_max", 360.0))
 	var min_gap = float(req.get("min_gap", 0.0))
 	var color = str(req.get("color", ""))
+	# Keep-out zones count each object's reach, not just its centre: a tree's
+	# crown is drawn far past the point it was placed at. Reach is half the
+	# texture's DIAGONAL, the circle any turn of it stays inside; half its larger
+	# side let a turned tree's corner over a wall.
+	var wall_margin = -1.0
+	if req.has("wall_margin"):
+		wall_margin = float(req["wall_margin"])
+	var avoid := []
+	if typeof(req.get("avoid_rects")) == TYPE_ARRAY:
+		for raw in req["avoid_rects"]:
+			if typeof(raw) == TYPE_ARRAY and raw.size() >= 4:
+				avoid.append(Rect2(float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])))
+	var keep_out = wall_margin >= 0.0 or not avoid.empty()
+	var reach_of := {}
+	if keep_out:
+		for candidate in assets:
+			var probe = _asset_tex("Objects", str(candidate))
+			var dims = probe.get_size() if probe != null else Vector2(0, 0)
+			reach_of[str(candidate)] = dims.length() * 0.5
+	var rejected = 0
 
 	var rng = RandomNumberGenerator.new()
 	if req.has("seed"):
@@ -4432,6 +4557,22 @@ func _scatter_objects(req : Dictionary) -> Dictionary:
 			"sorting": int(req.get("sorting", 0)),
 			"layer": int(req.get("layer", DEFAULT_OBJECT_LAYER)),
 		}
+		if keep_out:
+			var reach = float(reach_of.get(str(sub["asset"]), 0.0)) * float(sub["scale"])
+			var here = Vector2(px, py)
+			var blocked = false
+			if wall_margin >= 0.0:
+				var seg = _nearest_wall_segment(level, here)
+				if seg != null and seg.distance < reach + wall_margin:
+					blocked = true
+			if not blocked:
+				for zone in avoid:
+					if zone.grow(reach).has_point(here):
+						blocked = true
+						break
+			if blocked:
+				rejected += 1
+				continue
 		if color != "":
 			sub["color"] = color
 		var res = _place_object(sub)
@@ -4452,9 +4593,13 @@ func _scatter_objects(req : Dictionary) -> Dictionary:
 		points.append(Vector2(px, py))
 		placed.append(res["result"]["id"])
 
+	var short_note = ""
+	if placed.size() < count:
+		short_note = ("keep-out zones and min_gap left too little room; placed fewer than requested"
+			if keep_out else "min_gap too large for this area; placed fewer than requested")
 	return _ok({ "placed": placed.size(), "ids": placed, "attempts": attempts,
-		"requested": count,
-		"note": ("min_gap too large for this area; placed fewer than requested" if placed.size() < count else "") })
+		"requested": count, "kept_out": rejected,
+		"note": short_note })
 
 func _room_rollback(wall_id, floor_error) -> Dictionary:
 	var removed = false

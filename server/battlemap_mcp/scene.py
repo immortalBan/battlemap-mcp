@@ -196,8 +196,15 @@ def find_unexplained_lights(
     objects: list[dict],
     *,
     reach: float = DEFAULT_EMITTER_REACH,
+    intentional: dict[int, str] | None = None,
 ) -> dict:
-    """Report lights with nothing nearby that could be emitting them."""
+    """Report lights with nothing nearby that could be emitting them.
+
+    intentional: light id -> why it has no emitting object (moonlight through a
+    window). Such a light with no emitter nearby counts as explained by that
+    reason instead of as a defect.
+    """
+    reasons = intentional or {}
     emitters = [(o, _asset_name(o)) for o in objects if is_emitter(str(o.get("asset", "")))]
 
     explained: list[dict] = []
@@ -212,7 +219,9 @@ def find_unexplained_lights(
             if distance <= reach and (best is None or distance < best[0]):
                 best = (distance, name)
         entry = {"id": int(source.get("id", -1)), "position": [lx, ly]}
-        if best is None:
+        if best is None and entry["id"] in reasons:
+            explained.append({**entry, "by": f"intentional: {reasons[entry['id']]}"})
+        elif best is None:
             unexplained.append(entry)
         else:
             explained.append({**entry, "by": best[1], "distance": round(best[0])})

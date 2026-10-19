@@ -51,29 +51,34 @@ The following is the public MCP tool surface; the companion may perform several 
 | `list_asset_categories` | — |
 | `list_asset_packs` | — |
 | `prepare_map_with_packs` | `filename`, `packs` |
-| `list_assets` | `category`, `search`, `limit`, `vanilla_only`, `match_mode`, `min_score`, `searches`, `pack` |
-| `preview_assets` | `assets`, `category`, `columns`, `cell_px` |
+| `list_assets` | `category`, `search`, `limit`, `vanilla_only`, `match_mode`, `min_score`, `searches`, `pack`, `group_variants` |
+| `preview_assets` | `assets`, `category`, `columns`, `cell_px`, `true_scale` |
 | `annotate_assets` | `notes` |
 | `list_asset_notes` | `search`, `pack`, `role`, `limit` |
 | `repair_terrain` | `force` |
-| `validate_scene` | `samples`, `emitter_reach` |
+| `validate_scene` | `samples`, `emitter_reach`, `intentional` |
 | `validate_floorplan` | `cell_woxels`, `min_room_tiles` |
 | `validate_placements` | `tolerance_woxels` |
 | `list_elements` | `kind`, `limit`, `include_points`, `offset`, `include_bounds` |
 | `get_composition_snapshot` | — |
 | `get_element` | `id` |
 | `list_levels` | — |
-| `place_object` | `asset`, `x`, `y`, `scale`, `rotation`, `sorting`, `layer`, `color`, `modulate`, `block_light`, `snap` |
-| `place_objects` | `objects`, `file`, `snap` |
+| `place_object` | `asset`, `x`, `y`, `scale`, `rotation`, `sorting`, `layer`, `color`, `modulate`, `block_light`, `snap`, `light`, `group` |
+| `place_objects` | `objects`, `file`, `snap`, `group` |
+| `place_along_wall` | `start`, `end`, `toward`, `assets`, `scale`, `spacing`, `gap`, `margin`, `layer`, `skip_portals`, `avoid_existing`, `group`, `dry_run` |
+| `seat_around` | `table_id`, `assets`, `per_side`, `ends`, `around`, `scale`, `tuck`, `jitter`, `seed`, `group`, `dry_run` |
+| `dress_surface` | `surface_id`, `assets`, `count`, `scale`, `margin`, `jitter`, `seed`, `group`, `dry_run` |
 | `draw_wall` | `points`, `asset`, `loop`, `shadow`, `type`, `joint`, `color`, `snap` |
 | `merge_walls` | `ids` |
 | `draw_path` | `points`, `asset`, `layer`, `sorting`, `smoothness`, `width`, `fade_in`, `fade_out`, `grow`, `shrink`, `snap` |
-| `add_light` | `x`, `y`, `color`, `energy`, `range`, `shadows`, `asset`, `snap` |
+| `add_light` | `x`, `y`, `color`, `energy`, `range`, `shadows`, `asset`, `snap`, `group`, `intentional` |
+| `add_lights` | `lights`, `group`, `snap` |
+| `modify_light` | `id`, `color`, `energy`, `range`, `shadows` |
 | `add_portal` | `asset`, `x`, `y`, `closed`, `radius`, `mount`, `snap_max`, `flip`, `fallback_free`, `rotation`, `snap` |
 | `add_roof` | `points`, `asset`, `width`, `type`, `sorting`, `sunlight`, `sun_angle`, `sun_contrast` |
 | `place_pattern` | `asset`, `rect`, `points`, `category`, `color`, `rotation`, `z` |
 | `build_room` | `rect`, `points`, `wall_asset`, `floor`, `floor_asset`, `floor_category`, `floor_color`, `floor_slot`, `wall_type`, `wall_joint`, `snap` |
-| `scatter_objects` | `assets`, `rect`, `count`, `scale_min`, `scale_max`, `rotation_min`, `rotation_max`, `min_gap`, `color`, `sorting`, `layer`, `seed` |
+| `scatter_objects` | `assets`, `rect`, `count`, `scale_min`, `scale_max`, `rotation_min`, `rotation_max`, `min_gap`, `color`, `sorting`, `layer`, `seed`, `wall_margin`, `avoid_rects`, `group` |
 | `add_text` | `text`, `x`, `y`, `size`, `color`, `font` |
 | `generator_options` | `name`, `value` |
 | `generate_dungeon` | `design`, `floor`, `wall` |
@@ -108,16 +113,16 @@ The following is the public MCP tool surface; the companion may perform several 
 | `open_map` | `path`, `wait` |
 | `clear_caves` | — |
 | `move_element` | `id`, `x`, `y`, `snap` |
-| `move_elements` | `ids`, `dx`, `dy`, `rotation`, `pivot_x`, `pivot_y`, `snap` |
+| `move_elements` | `ids`, `dx`, `dy`, `rotation`, `pivot_x`, `pivot_y`, `snap`, `group` |
 | `modify_object` | `id`, `scale`, `rotation`, `color`, `modulate`, `shadow`, `layer`, `block_light` |
 | `duplicate_object` | `id`, `dx`, `dy`, `snap` |
 | `delete_element` | `id` |
-| `delete_elements` | `ids` |
+| `delete_elements` | `ids`, `group` |
 | `add_level` | `label` |
 | `set_map_size` | `width`, `height` |
 | `delete_level` | `id` |
 | `set_level` | `id` |
-| `screenshot` | `max_px` |
+| `screenshot` | `max_px`, `rect`, `center`, `tiles_across` |
 | `clear_captures` | — |
 | `export_map` | `ppi`, `format`, `timeout`, `max_px`, `quality`, `grid` |
 | `get_export` | `operation_id`, `timeout`, `max_px` |
@@ -125,7 +130,8 @@ The following is the public MCP tool surface; the companion may perform several 
 | `get_camera` | — |
 | `set_camera` | `x`, `y`, `zoom` |
 | `focus_element` | `id`, `zoom` |
-| `fit_elements` | `ids`, `pad` |
+| `fit_elements` | `ids`, `pad`, `group` |
+| `list_groups` | `name` |
 | `select_elements` | `ids` |
 | `clear_selection` | — |
 | `undo` | — |

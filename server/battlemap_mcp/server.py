@@ -17,6 +17,7 @@ import hashlib
 import io
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -37,8 +38,10 @@ from . import (
     arrangement,
     asset_notes,
     asset_vocabulary,
+    groups,
     handshake,
     installer,
+    layout,
     lifecycle,
     mapfile,
     pack_contents,
@@ -921,6 +924,61 @@ def _pack_marker(pack: str) -> str:
     )
 
 
+# Colour and wear variants of one drawing: book_1a, book_1b, book_1x. A digit
+# and ONE trailing letter; bookcase_01 and bookcase_03 are different drawings.
+_VARIANT = re.compile(r"(.*\d)[a-z]\Z")
+
+
+def _variant_family(path: str) -> str:
+    head, _, tail = path.rpartition("/")
+    stem, dot, extension = tail.rpartition(".")
+    match = _VARIANT.match(stem.lower())
+    return f"{head}/{match.group(1)}" if match else path.lower()
+
+
+def _collapse_variants(entry: dict, keep: int) -> dict:
+    """One asset per family of variants, the others listed under `variants`.
+
+    The listing's per-asset lists stay aligned and `colorable` is renumbered,
+    so the budget of paths buys distinct drawings instead of five colours of one.
+    """
+    assets = list(entry.get("assets", []))
+    first: dict[str, int] = {}
+    order: list[int] = []
+    others: dict[int, list[str]] = {}
+    for index, path in enumerate(assets):
+        family = _variant_family(path)
+        if family in first:
+            others[first[family]].append(path)
+            continue
+        first[family] = index
+        others[index] = []
+        order.append(index)
+    order = order[:keep]
+    out = dict(entry)
+    for key in ("assets", "sizes", "scores", "matched_terms"):
+        values = entry.get(key)
+        if isinstance(values, list) and len(values) == len(assets):
+            out[key] = [values[i] for i in order]
+    position = {old: new for new, old in enumerate(order)}
+    out["colorable"] = [
+        position[i]
+        for i in entry.get("colorable", [])
+        if isinstance(i, int) and not isinstance(i, bool) and i in position
+    ]
+    variants = {str(position[i]): others[i] for i in order if others[i]}
+    if variants:
+        out["variants"] = variants
+    if not out["colorable"] and entry.get("colorable"):
+        # The colourable ones were variants: say so, not that a listed one is.
+        out["note"] = (
+            "some variants listed under `variants` have a colour mask (often the "
+            "'x' ones): they take color= when placed and show red without one"
+        )
+    out["returned"] = len(order)
+    return out
+
+
 def _with_asset_facts(result: dict, *, sizes: dict[str, Any] | None = None) -> dict:
     """Attach measured sizes and remembered notes to a listing, in its own order.
 
@@ -1101,6 +1159,7 @@ def _list_assets_many(
     match_mode: str,
     min_score: float,
     marker: str = "",
+    variants: bool = False,
 ) -> dict:
     """Several searches in one call, surveying the category at most once.
 
@@ -1222,6 +1281,9 @@ def _list_assets_many(
         elif tried:
             entry["also_tried"] = tried
 
+    if variants:
+        for term in list(results):
+            results[term] = _collapse_variants(results[term], per_term)
     for entry in results.values():
         notes = asset_notes.indexed(list(entry["assets"]))
         if notes:
@@ -1282,6 +1344,7 @@ def list_assets(
         ),
     ] = None,
     pack: str = "",
+    group_variants: bool = False,
 ) -> dict:
     """List asset paths in a category, optionally filtered by a case-insensitive substring.
 
@@ -1311,6 +1374,8 @@ def list_assets(
     round" finds round_table_01); 'fuzzy' (tokens plus resemblance, "barrle"
     lands; ranked with `scores`, cutoff min_score 0..1).
     vanilla_only: core assets only, when packs crowd them out.
+    group_variants: one entry per drawing; its colour variants (book_1a/1b/1c)
+      go under `variants`, so the listing shows more distinct things.
     """
     require_choice(match_mode, list(MATCH_MODES), "match_mode")
     if not 0.0 <= min_score <= 1.0:
@@ -1322,11 +1387,22 @@ def list_assets(
     marker = _pack_marker(pack)
     if searches is not None:
         return _list_assets_many(
-            category, searches, search, limit, vanilla_only, match_mode, min_score, marker
+            category,
+            searches,
+            search,
+            limit,
+            vanilla_only,
+            match_mode,
+            min_score,
+            marker,
+            variants=group_variants,
         )
 
+    # Collapsing variants needs more raw paths to fill `limit` families; the
+    # bridge scans colour and size for up to 200.
+    fetch = min(max(limit * 6, limit), 200) if group_variants else limit
     result = _list_assets_single(
-        category, search, limit, vanilla_only, match_mode, min_score, marker
+        category, search, fetch, vanilla_only, match_mode, min_score, marker
     )
     if search and not result.get("assets"):
         found, used, tried = _other_word(
@@ -1342,6 +1418,8 @@ def list_assets(
             result = found
         elif tried:
             result["also_tried"] = tried
+    if group_variants:
+        result = _collapse_variants(result, limit)
     _with_asset_facts(result)
     if result.get("sizes"):
         result["sizes_are"] = SIZES_ARE
@@ -1494,6 +1572,7 @@ def preview_assets(
     category: str = "Objects",
     columns: int = 4,
     cell_px: int = 128,
+    true_scale: bool = False,
 ) -> list[Image | str]:
     """LOOK at candidate assets before committing to one. Read-only.
 
@@ -1514,9 +1593,8 @@ def preview_assets(
     few distinct assets and repeats each many times, so the decisions worth
     looking at are a handful per map.
 
-    A thumbnail on a plain ground will not tell you how something reads against
-    your floor under your lighting. It catches the gross mistake (stone where
-    you wanted wood); the map render still settles the subtle one.
+    A thumbnail on a plain ground catches the gross mistake (stone where you
+    wanted wood); the map render still settles how it reads on your floor.
 
     Every cell is fitted to the same square, so the sheet hides how big each
     asset really is. The caption under it lists the cells in order with each
@@ -1528,6 +1606,9 @@ def preview_assets(
     assets: paths from list_assets or search_pack_contents, at most 32.
     category must match them.
     columns: 1-8. cell_px: 32-256, the size each asset is fitted into.
+    true_scale: draw every asset at ONE scale, set by the largest, so their
+      real proportions show: a four-tile cart beside a book looks like one.
+      The caption says how many woxels a cell spans.
     """
     if not assets:
         raise ValidationError("assets must not be empty — pass paths from list_assets")
@@ -1547,6 +1628,7 @@ def preview_assets(
         columns=columns,
         cell_px=cell_px,
         name="asset_preview.png",
+        **({"true_scale": True} if true_scale else {}),
     )
     # Read and decoded here, not handed to Image(path=...), which base64s any
     # file at all without looking at it.
@@ -1561,6 +1643,12 @@ def _preview_caption(assets: list[str], result: dict) -> str:
     missing = set(result.get("missing", []))
     notes = asset_notes.notes_for(assets)
     lines = ["Cells, row-major; sizes in woxels at scale 1 (256 = one tile):"]
+    spans = result.get("woxels_per_cell")
+    if result.get("true_scale") and isinstance(spans, int | float):
+        lines[0] = (
+            f"True scale: every cell spans {round(spans)} woxels "
+            f"({spans / WOXELS_PER_TILE:.1f} tiles). " + lines[0]
+        )
     for index, asset in enumerate(assets, start=1):
         line = f"{index}. {asset}"
         measured = sizes.get(asset) if sizes else None
@@ -1697,27 +1785,32 @@ def repair_terrain(force: bool = False) -> dict:
 
 
 @tool()
-def validate_scene(samples: int = 48, emitter_reach: float = DEFAULT_EMITTER_REACH) -> dict:
+def validate_scene(
+    samples: int = 48,
+    emitter_reach: float = DEFAULT_EMITTER_REACH,
+    intentional: list[int] | None = None,
+) -> dict:
     """Check that the map has ground and that its light has causes. Read-only.
 
     Two failures that a render shows but cannot diagnose, and that no element
     count can show at all:
 
-      bare_ground   open ground with no terrain painted on it. Terrain is the
-                    one part of a map with no element count, so a building
-                    standing in an unpainted void reports as a complete,
-                    correct map everywhere else. Cells occupied or enclosed by
-                    walls are skipped — an interior is floored with patterns,
-                    not terrain, and would otherwise read as bare on a
-                    perfectly finished map.
+      bare_ground   open ground with no terrain painted on it. Terrain has no
+                    element count, so a building in an unpainted void reports
+                    as complete everywhere else. Cells occupied or enclosed by
+                    walls are skipped: interiors are floored with patterns.
       lights        every light, split into `explained` (something nearby could
                     be emitting it) and `unexplained` (nothing could). A pool
-                    of warm light on bare boards with no candle, hearth or
-                    lantern reads as a mistake immediately, and a viewer
-                    notices before they can say why.
+                    of warm light with no candle, hearth or lantern reads as a
+                    mistake before a viewer can say why.
 
     Lights match emitters by asset NAME, so read it as a prompt: an oddly named
     source reads as unexplained. `explained` names the asset it credited.
+
+    intentional: ids of lights whose source is not an object — moonlight
+      through a window, a spell's glow. They count as explained, with the
+      reason. A light added with add_light(intentional="...") is already
+      remembered for this session.
 
     `arrangement` is advice and never affects `ok`: how many objects sit at
     scale 1.0 on quarter turns, and how much of the map the build covers.
@@ -1754,7 +1847,10 @@ def validate_scene(samples: int = 48, emitter_reach: float = DEFAULT_EMITTER_REA
         wall_list,
         slots=terrain.get("slots"),
     )
-    lit = find_unexplained_lights(light_list, object_list, reach=emitter_reach)
+    reasons = dict(_INTENTIONAL_LIGHTS)
+    for ident in intentional or []:
+        reasons.setdefault(int(ident), "marked intentional")
+    lit = find_unexplained_lights(light_list, object_list, reach=emitter_reach, intentional=reasons)
     return _with_coverage(
         {
             "bare_ground": ground,
@@ -2162,6 +2258,20 @@ def get_snap_settings() -> dict:
     return out
 
 
+class LightSpec(BaseModel):
+    """A light made together with the object that emits it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    color: str = ""
+    energy: float = 1.0
+    range: float = 2.0
+    shadows: bool = True
+    asset: str = ""
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+
+
 @tool()
 def place_object(
     asset: str,
@@ -2175,8 +2285,17 @@ def place_object(
     modulate: str = "",
     block_light: bool | None = None,
     snap: str = "",
+    light: LightSpec | None = None,
+    group: str = "",
 ) -> dict:
     """Place an object (prop) on the current map. Returns the new element id.
+
+    light: make the light this object emits in the same step — {color, energy,
+      range, shadows, asset, offset_x, offset_y}, as add_light takes them. It
+      lands on the object (plus the offset) and one undo removes both; the reply
+      carries `light_id`. Use it for candles, lamps, braziers, hearths.
+    group: a name to file the new ids under ("hall/desks"), so the zone can be
+      moved, framed or deleted together later; see list_groups.
 
     If you place a colourable asset WITHOUT a colour, the response comes back
     with `colorable: true` and `mask_fraction`, and its note says whether the
@@ -2188,14 +2307,9 @@ def place_object(
     x, y: woxel coordinates; defaults to map center. rotation: degrees.
     sorting: 0=over, 1=under. snap: 'none', 'grid' or 'auto'; see get_snap_settings.
 
-    Two different tints, do not confuse them:
-
-    color: '#rrggbb', Dungeondraft's own colourable-asset colour — the same
-      thing the app's colour picker sets. Only assets carrying the colourable
-      attribute respond to it (including colorable carpets and crystals). On any
-      other asset it is stored and never renders.
-    modulate: retained for compatibility, but nonempty values are refused because
-      Dungeondraft does not preserve this tint when saving and reopening.
+    color: '#rrggbb', Dungeondraft's own colourable-asset colour, as its colour
+      picker sets it. Only colourable assets respond; on others it never renders.
+    modulate: refused when nonempty: Dungeondraft does not save this tint.
 
     layer: which layer the object is drawn on — a VALUE, a multiple of 100 from
       -500 to 900 (also 1100, Above Lights, when get_status.unofficial_patch is
@@ -2237,7 +2351,18 @@ def place_object(
         params["modulate"] = modulate
     if block_light is not None:
         params["block_light"] = block_light
-    return _with_snap(bridge.request("place_object", **params), snap_info)
+    group = _check_group(group)
+    if light is None:
+        made = bridge.request("place_object", **params)
+        return _record_group(group, _with_snap(made, snap_info))
+    # Through the batch command, which makes the object and its light in one
+    # undo step; a single place_object is its own step and would orphan the light.
+    lit_entry = {**params, "light": _light_params(light, "light")}
+    batch = bridge.request("place_objects", objects=[lit_entry])
+    entry = dict((batch.get("objects") or [{}])[0])
+    if batch.get("note"):
+        entry["note"] = batch["note"]
+    return _record_group(group, _with_snap(entry, snap_info))
 
 
 BATCH_LIMIT = 100
@@ -2258,11 +2383,105 @@ class PlacedObject(BaseModel):
     color: str = ""
     modulate: str = ""
     block_light: bool | None = None
+    light: LightSpec | None = None
+
+
+def _light_params(spec: LightSpec, where: str) -> dict:
+    """A LightSpec as the bridge takes it: range in its own units."""
+    require_hex_color(spec.color, f"{where}.color")
+    for field in ("energy", "range", "offset_x", "offset_y"):
+        require_finite(getattr(spec, field), f"{where}.{field}")
+    params: dict = {
+        "energy": spec.energy,
+        "range": spec.range / EDITOR_RANGE_PER_SCALE,
+        "shadows": spec.shadows,
+        "offset_x": spec.offset_x,
+        "offset_y": spec.offset_y,
+    }
+    if spec.color:
+        params["color"] = spec.color
+    if spec.asset:
+        params["asset"] = spec.asset
+    return params
+
+
+def _check_group(group: str) -> str:
+    """A group name to record placements under, validated before anything is placed."""
+    if not group:
+        return ""
+    try:
+        return groups.check_name(group)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+
+
+def _made_ids(result: Any) -> list[int]:
+    """Every element id a placement reply reports creating, lights included."""
+    if not isinstance(result, dict):
+        return []
+    found: list[int] = []
+    for key in ("id", "light_id"):
+        if isinstance(result.get(key), int) and not isinstance(result.get(key), bool):
+            found.append(int(result[key]))
+    for ident in result.get("ids") or []:
+        if isinstance(ident, int) and not isinstance(ident, bool):
+            found.append(int(ident))
+    for entry in list(result.get("objects") or []) + list(result.get("lights") or []):
+        if isinstance(entry, dict):
+            found.extend(_made_ids({k: entry.get(k) for k in ("id", "light_id")}))
+    for span in result.get("id_ranges") or []:
+        if isinstance(span, list) and len(span) == 2:
+            found.extend(range(int(span[0]), int(span[1]) + 1))
+    unique: list[int] = []
+    for ident in found:
+        if ident not in unique:
+            unique.append(ident)
+    return unique
+
+
+def _record_group(group: str, result: Any) -> Any:
+    """Add what a placement made to `group`, and say so in the reply."""
+    if group and isinstance(result, dict):
+        made = _made_ids(result)
+        groups.add(group, made)
+        result["group"] = {"name": group, "added": len(made), "size": len(groups.members(group))}
+    return result
+
+
+def _group_ids(group: str) -> list[int]:
+    """The group's members that still exist on the map; refused if there is no such group."""
+    try:
+        candidates = groups.members(group)
+    except KeyError as missing:
+        known = ", ".join(groups.all_groups()) or "none yet"
+        raise ValidationError(
+            f"there is no group {group.strip()!r} in this session (groups: {known}). Groups "
+            "last while this companion runs; list_groups shows them."
+        ) from missing
+    alive = set()
+    for ident in candidates:
+        try:
+            bridge.request("get_element", id=ident)
+        except BridgeCommandError:
+            continue
+        alive.add(ident)
+    return groups.keep(group, alive)
+
+
+def _ids_or_group(ids: list[int] | None, group: str) -> list[int]:
+    if ids and group:
+        raise ValidationError("give ids or group, not both")
+    if group:
+        found = _group_ids(group)
+        if not found:
+            raise ValidationError(f"group {group.strip()!r} has no elements left on the map")
+        return found
+    return list(ids or [])
 
 
 @tool()
 def place_objects(
-    objects: list[PlacedObject] | None = None, file: str = "", snap: str = ""
+    objects: list[PlacedObject] | None = None, file: str = "", snap: str = "", group: str = ""
 ) -> dict:
     """Place many objects at chosen positions in ONE call and ONE undo step.
 
@@ -2293,7 +2512,12 @@ def place_objects(
 
     A batch placed entirely at scale 1.0 on quarter turns comes back with an
     `arrangement_note`: most placements read better with slight variation.
+
+    An entry may carry `light` (see place_object): the light is made with its
+    object in the same undo step, and the entry reports `light_id`.
+    group: file every id this batch makes, lights included, under one name.
     """
+    group = _check_group(group)
     if file and objects:
         raise ValidationError("give objects or file, not both")
     if file:
@@ -2321,7 +2545,7 @@ def place_objects(
     note = arrangement.batch_note(items)
     if note and isinstance(result, dict):
         result["arrangement_note"] = note
-    return _with_snap(result, snap_info)
+    return _record_group(group, _with_snap(result, snap_info))
 
 
 FILE_BATCH_LIMIT = 1000
@@ -2413,6 +2637,8 @@ def _batch_params(entry: object, where: str) -> dict:
         params["color"] = item.color
     if item.block_light is not None:
         params["block_light"] = item.block_light
+    if item.light is not None:
+        params["light"] = _light_params(item.light, f"{where}.light")
     return params
 
 
@@ -2548,6 +2774,8 @@ def add_light(
     shadows: bool = True,
     asset: str = "",
     snap: str = "",
+    group: str = "",
+    intentional: str = "",
 ) -> dict:
     """Add a light at a woxel position. Returns the new element id.
 
@@ -2557,7 +2785,16 @@ def add_light(
       in the same units.
     asset: optional Lights gradient/cookie texture path.
     snap: 'none', 'grid' or 'auto'; see get_snap_settings.
+    group: file the light under a name; see list_groups.
+    intentional: why this light has no object emitting it ("moonlight through
+      the north window"). validate_scene then counts it as explained, with the
+      reason, for the rest of this session.
+
+    Lighting a candle or lamp you are placing? Pass `light` to place_object or
+    place_objects instead: one call, one undo step, and the glow sits on it.
+    Many lights at once: add_lights. Changing one: modify_light.
     """
+    group = _check_group(group)
     require_hex_color(color, "color")
     require_finite(x, "x")
     require_finite(y, "y")
@@ -2576,7 +2813,508 @@ def add_light(
         params["x"] = x
     if y is not None:
         params["y"] = y
-    return _with_snap(bridge.request("add_light", **params), snap_info)
+    result = _with_snap(bridge.request("add_light", **params), snap_info)
+    if intentional.strip() and isinstance(result, dict) and isinstance(result.get("id"), int):
+        _INTENTIONAL_LIGHTS[int(result["id"])] = intentional.strip()
+    return _record_group(group, result)
+
+
+# Lights whose source is not an object, by id, with the reason: validate_scene
+# counts them as explained. Kept for this companion session.
+_INTENTIONAL_LIGHTS: dict[int, str] = {}
+
+
+class LightEntry(BaseModel):
+    """One entry of add_lights: add_light's arguments for one light."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    x: float
+    y: float
+    color: str = ""
+    energy: float = 1.0
+    range: float = 2.0
+    shadows: bool = True
+    asset: str = ""
+    intentional: str = ""
+
+
+@tool()
+def add_lights(lights: list[LightEntry], group: str = "", snap: str = "") -> dict:
+    """Add many lights in ONE call and ONE undo step. Returns their ids in order.
+
+    Each entry takes add_light's arguments: x, y, color, energy, range,
+    shadows, asset, and intentional (why it has no emitting object). Up to 100.
+    If one fails, none are kept.
+
+    To light objects as you place them, give place_objects entries a `light`
+    instead; this is for lights with their own positions.
+    group: file every light under one name; see list_groups.
+    """
+    group = _check_group(group)
+    if not lights:
+        raise ValidationError("lights must not be empty")
+    if len(lights) > BATCH_LIMIT:
+        raise ValidationError(f"lights is capped at {BATCH_LIMIT} per call")
+    grid, snap_info = _snap_grid(snap, snapping.VANILLA_TILE)
+    items = []
+    for index, entry in enumerate(lights):
+        where = f"lights[{index}]"
+        require_hex_color(entry.color, f"{where}.color")
+        for field in ("x", "y", "energy", "range"):
+            require_finite(getattr(entry, field), f"{where}.{field}")
+        x, y = _snap_xy(grid, entry.x, entry.y)
+        item: dict = {
+            "x": x,
+            "y": y,
+            "energy": entry.energy,
+            "range": entry.range / EDITOR_RANGE_PER_SCALE,
+            "shadows": entry.shadows,
+        }
+        if entry.color:
+            item["color"] = entry.color
+        if entry.asset:
+            item["asset"] = entry.asset
+        items.append(item)
+    result = bridge.request("add_lights", lights=items)
+    for entry, ident in zip(lights, result.get("ids") or [], strict=False):
+        if entry.intentional.strip():
+            _INTENTIONAL_LIGHTS[int(ident)] = entry.intentional.strip()
+    return _record_group(group, _with_snap(result, snap_info))
+
+
+@tool()
+def modify_light(
+    id: int,
+    color: str = "",
+    energy: float | None = None,
+    range: float | None = None,
+    shadows: bool | None = None,
+) -> dict:
+    """Change a light's colour, brightness, range or shadows in place. Undoable.
+
+    Only what you pass changes. range is in the editor's own units, as
+    add_light takes it. Returns the light as get_element reports it.
+    """
+    require_hex_color(color, "color")
+    require_finite(energy, "energy")
+    require_finite(range, "range")
+    params: dict = {"id": id}
+    if color:
+        params["color"] = color
+    if energy is not None:
+        params["energy"] = energy
+    if range is not None:
+        params["range"] = range / EDITOR_RANGE_PER_SCALE
+    if shadows is not None:
+        params["shadows"] = shadows
+    if len(params) == 1:
+        raise ValidationError("pass at least one of color, energy, range or shadows")
+    return _light_in_editor_units(bridge.request("modify_light", **params))
+
+
+# --------------------------------------------------------------------------
+# Furnishing helpers: along a wall, around a table, on a surface
+# --------------------------------------------------------------------------
+
+# A wall line passed by start/end may be off the wall's centre by this much and
+# still name it; further than that it is probably another wall.
+WALL_FIND_DISTANCE = 96.0
+# sin of the largest angle between start->end and the wall it names.
+WALL_FIND_SIN = 0.17
+# Used when the wall's own texture cannot be measured.
+WALL_FALLBACK_THICKNESS = 64.0
+# Objects at or above this layer draw over walls (posts, canopies): they do not
+# take up floor along a wall.
+OVER_WALL_LAYER = 700
+# Clearance kept beside an existing object a run stops short of.
+NEIGHBOUR_CLEARANCE = 8.0
+
+
+def _asset_sizes(category: str, assets: list[str]) -> dict[str, tuple[float, float]]:
+    """[width, height] at scale 1 for each asset, measured by the bridge."""
+    wanted = list(dict.fromkeys(assets))
+    answer = bridge.request("list_assets", category=category, only=wanted, limit=len(wanted))
+    measured = _sizes_by_path(answer)
+    if not measured and wanted:
+        raise ValidationError(
+            "the running bridge does not report asset sizes; install the bridge from this "
+            "release and restart Dungeondraft"
+        )
+    missing = [asset for asset in wanted if not measured.get(asset)]
+    if missing:
+        raise ValidationError(
+            f"could not measure {missing}: pass exact paths from "
+            f"list_assets(category={category!r}) for a pack this map includes"
+        )
+    return {asset: (float(size[0]), float(size[1])) for asset, size in measured.items() if size}
+
+
+def _point(value: list[float], name: str) -> tuple[float, float]:
+    if not isinstance(value, list | tuple) or len(value) != 2:
+        raise ValidationError(f"{name} must be [x, y] in woxels")
+    require_finite(value[0], f"{name} x")
+    require_finite(value[1], f"{name} y")
+    return float(value[0]), float(value[1])
+
+
+def _wall_segments(wall: dict) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    points = [(float(p[0]), float(p[1])) for p in wall.get("points") or []]
+    pairs = list(zip(points, points[1:], strict=False))
+    if wall.get("loop") and len(points) > 2:
+        pairs.append((points[-1], points[0]))
+    return pairs
+
+
+def _place_or_plan(entries: list[dict], report: dict, group: str, dry_run: bool) -> dict:
+    """Place a computed batch in one undo step, or return the plan for a dry run."""
+    if dry_run:
+        report["planned"] = entries
+        return report
+    if not entries:
+        return report
+    if len(entries) > BATCH_LIMIT:
+        raise ValidationError(
+            f"that is {len(entries)} pieces, past the {BATCH_LIMIT} one call places; "
+            "split the stretch"
+        )
+    placed = bridge.request("place_objects", objects=entries)
+    report["ids"] = placed.get("ids") or [o.get("id") for o in placed.get("objects", [])]
+    if placed.get("note"):
+        report["note"] = placed["note"]
+    return _record_group(group, report)
+
+
+@tool()
+def place_along_wall(
+    start: list[float],
+    end: list[float],
+    toward: list[float],
+    assets: list[str],
+    scale: float = 1.0,
+    spacing: float = 0.0,
+    gap: float = 0.0,
+    margin: float = 24.0,
+    layer: int = 100,
+    skip_portals: bool = True,
+    avoid_existing: bool = True,
+    group: str = "",
+    dry_run: bool = False,
+) -> dict:
+    """Line a stretch of wall with furniture: flush, facing the room, clear of doors.
+
+    For shelving, benches, cabinets, wall lamps — anything whose back belongs
+    against a wall. The tool does the arithmetic a run gets wrong by hand:
+
+      - finds the wall from start/end and reads its thickness
+      - stands each piece flush against the wall's face, its front to the room
+      - leaves doors and windows on that wall clear, plus `margin`
+      - keeps out of corners (half the wall's thickness) and away from objects
+        already standing along that wall, so runs meeting in a corner do not
+        overlap
+      - centres the pieces in each free stretch, using the assets in turn
+
+    start, end: two points ON the wall's centre line bounding the stretch, e.g.
+      the room's corners. toward: any point inside the room the pieces face.
+    assets: one or more Objects paths, drawn facing down at rotation 0 (the
+      usual Dungeondraft convention; check one family with a preview). Each
+      piece's width runs along the wall.
+    scale: for every piece. spacing: woxels between neighbours. gap: woxels
+      between the wall's face and the pieces' backs. margin: kept clear at
+      both ends of the stretch and beside every door or window.
+    avoid_existing: treat objects already along this wall (layers from `layer`
+      up to 600) as taken; rugs below and caps over the wall are ignored.
+    dry_run: return the plan without placing anything.
+    group: file the placed ids under one name; see list_groups.
+
+    Returns the wall it used, the rotation, the free stretches, and the ids of
+    one undoable batch. Check the run in a screenshot before repeating it.
+    """
+    group = _check_group(group)
+    a_point, b_point = _point(start, "start"), _point(end, "end")
+    room = _point(toward, "toward")
+    if not assets:
+        raise ValidationError("assets must not be empty")
+    require_positive(scale, "scale")
+    require_choice(layer, OBJECT_LAYERS, "layer")
+    for name, value in (("spacing", spacing), ("gap", gap), ("margin", margin)):
+        require_finite(value, name)
+        if value < 0:
+            raise ValidationError(f"{name} must be 0 or more")
+    run = (b_point[0] - a_point[0], b_point[1] - a_point[1])
+    run_length = math.hypot(*run)
+    if run_length < 1:
+        raise ValidationError("start and end must be apart")
+
+    walls, _ = _read_all("walls", include_points=True)
+    middle = ((a_point[0] + b_point[0]) / 2, (a_point[1] + b_point[1]) / 2)
+    best = None
+    for wall in walls:
+        for seg_a, seg_b in _wall_segments(wall):
+            seg = (seg_b[0] - seg_a[0], seg_b[1] - seg_a[1])
+            seg_length = math.hypot(*seg)
+            if seg_length < 1:
+                continue
+            sine = abs(run[0] * seg[1] - run[1] * seg[0]) / (run_length * seg_length)
+            if sine > WALL_FIND_SIN:
+                continue
+            distance = layout.distance_to_segment(middle, seg_a, seg_b)
+            if best is None or distance < best[0]:
+                best = (distance, wall, seg_a, seg_b)
+    if best is None or best[0] > WALL_FIND_DISTANCE:
+        raise ValidationError(
+            "start..end does not run along any wall on this level. Give two points on a "
+            "wall's centre line (list_elements(kind='walls', include_points=True)), "
+            "such as the corners of the room you are lining."
+        )
+    _, wall, seg_a, seg_b = best
+    try:
+        frame = layout.wall_frame(seg_a, seg_b, room)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+
+    thickness = WALL_FALLBACK_THICKNESS
+    wall_asset = str(wall.get("asset", ""))
+    if wall_asset:
+        measured = _sizes_by_path(
+            bridge.request("list_assets", category="Walls", only=[wall_asset], limit=1)
+        )
+        if measured.get(wall_asset):
+            thickness = float(measured[wall_asset][1])
+
+    low, high = sorted((frame.along(a_point), frame.along(b_point)))
+    low, high = max(low, 0.0), min(high, frame.length)
+    # Where the stretch reaches a corner, the crossing wall takes half its
+    # thickness of floor: start past it, or the runs of two walls collide.
+    if low <= thickness:
+        low += thickness / 2.0
+    if frame.length - high <= thickness:
+        high -= thickness / 2.0
+    low, high = low + margin, high - margin
+    if high - low <= 0:
+        raise ValidationError("that stretch leaves no room once its corners and margin are kept")
+
+    sizes_by_asset = _asset_sizes("Objects", assets)
+    sizes = [sizes_by_asset[asset] for asset in assets]
+    depth = max(size[1] for size in sizes) * scale
+    band = (thickness / 2.0 - 1.0, thickness / 2.0 + gap + depth)
+    blocked: list[tuple[float, float]] = []
+    reasons: list[dict] = []
+    if skip_portals:
+        portals, _ = _read_all("portals")
+        for portal in portals:
+            where = portal.get("position") or [0, 0]
+            spot = (float(where[0]), float(where[1]))
+            if layout.distance_to_segment(spot, seg_a, seg_b) > thickness:
+                continue
+            reach = float(portal.get("radius") or 128.0)
+            along = frame.along(spot)
+            blocked.append((along - reach - margin, along + reach + margin))
+            reasons.append({"portal": portal.get("id"), "at": round(along)})
+    if avoid_existing:
+        objects, _ = _read_all("objects")
+        # The bridge reports position, size, scale and turn; the footprint is
+        # derived here, as list_elements does, never read from the listing.
+        for item in (add_bounds(entry) for entry in objects):
+            item_layer = int(item.get("layer", 100))
+            if item_layer < layer or item_layer >= OVER_WALL_LAYER:
+                continue
+            box = item.get("bounds")
+            if not isinstance(box, list) or len(box) != 4:
+                continue
+            corners = [(box[0], box[1]), (box[2], box[1]), (box[0], box[3]), (box[2], box[3])]
+            across = [frame.across(c) for c in corners]
+            if max(across) <= band[0] or min(across) >= band[1]:
+                continue
+            spans = [frame.along(c) for c in corners]
+            if max(spans) < low or min(spans) > high:
+                continue
+            blocked.append((min(spans) - NEIGHBOUR_CLEARANCE, max(spans) + NEIGHBOUR_CLEARANCE))
+            reasons.append({"object": item.get("id"), "at": round(sum(spans) / 4)})
+
+    placements, stretches = layout.wall_run(
+        frame,
+        low,
+        high,
+        thickness=thickness,
+        sizes=sizes,
+        scale=scale,
+        spacing=spacing,
+        gap=gap,
+        blocked=blocked,
+    )
+    entries = [
+        {
+            "asset": assets[spot.index],
+            "x": spot.x,
+            "y": spot.y,
+            "rotation": spot.rotation,
+            "scale": scale,
+            "layer": layer,
+        }
+        for spot in placements
+    ]
+    report: dict = {
+        "wall_id": wall.get("id"),
+        "segment": [list(seg_a), list(seg_b)],
+        "thickness": thickness,
+        "rotation": layout.facing_rotation(*frame.normal),
+        "free_stretches": [[round(a), round(b)] for a, b in stretches],
+        "kept_clear": reasons,
+        "pieces": len(entries),
+    }
+    if not entries:
+        report["note"] = "no piece fits in the free stretches; try a narrower asset or less margin"
+    return _place_or_plan(entries, report, group, dry_run)
+
+
+@tool()
+def seat_around(
+    table_id: int,
+    assets: list[str],
+    per_side: int = 2,
+    ends: bool = False,
+    around: int = 0,
+    scale: float = 1.0,
+    tuck: float = 0.15,
+    jitter: float = 2.0,
+    seed: int | None = None,
+    group: str = "",
+    dry_run: bool = False,
+) -> dict:
+    """Seat a table: chairs evenly along its real edges, all facing it, one scale.
+
+    Measures the table as placed (size, scale and turn) instead of guessing at
+    "about the edge", which comes out uneven in spacing and size.
+
+    table_id: the placed table. assets: chair asset(s), used in turn, drawn
+      with the seat facing down at rotation 0 (the usual Dungeondraft chair).
+    per_side: chairs on each long side. ends: one more at each short end.
+    around: for a round table, this many chairs evenly in a ring instead.
+    tuck: how far each chair slides under the edge, as a fraction of its depth.
+    jitter: at most this many degrees of turn per chair, so the set is even but
+      not stamped. seed: repeatable jitter.
+    group: file the chairs under one name; see list_groups.
+    """
+    group = _check_group(group)
+    if not assets:
+        raise ValidationError("assets must not be empty")
+    require_positive(scale, "scale")
+    if per_side < 0 or around < 0 or (per_side == 0 and not ends and around == 0):
+        raise ValidationError("ask for some chairs: per_side, ends or around")
+    if not 0 <= tuck < 0.5:
+        raise ValidationError("tuck must be between 0 and 0.5")
+    table = bridge.request("get_element", id=table_id)
+    if table.get("kind") != "object" or not table.get("texture_size"):
+        raise ValidationError(f"element {table_id} is not a placed object with a size")
+    t_scale = float(table.get("scale", 1.0))
+    t_w, t_h = (float(v) * t_scale for v in table["texture_size"])
+    chair = _asset_sizes("Objects", assets)[assets[0]]
+    spots = layout.seats_around(
+        (float(table["position"][0]), float(table["position"][1])),
+        float(table.get("rotation", 0.0)),
+        (t_w, t_h),
+        (chair[0] * scale, chair[1] * scale),
+        per_side=per_side,
+        ends=ends,
+        around=around,
+        tuck=tuck,
+        jitter=jitter,
+        seed=seed,
+    )
+    entries = [
+        {
+            "asset": assets[k % len(assets)],
+            "x": spot.x,
+            "y": spot.y,
+            "rotation": spot.rotation,
+            "scale": scale,
+            "layer": int(table.get("layer", 100)),
+        }
+        for k, spot in enumerate(spots)
+    ]
+    report: dict = {"table_id": table_id, "table_size": [round(t_w), round(t_h)]}
+    report["chairs"] = len(entries)
+    return _place_or_plan(entries, report, group, dry_run)
+
+
+@tool()
+def dress_surface(
+    surface_id: int,
+    assets: list[str],
+    count: int = 3,
+    scale: float = 1.0,
+    margin: float = 0.08,
+    jitter: float = 25.0,
+    seed: int | None = None,
+    group: str = "",
+    dry_run: bool = False,
+) -> dict:
+    """Put things ON a table, desk or counter: one layer up, wholly inside its top.
+
+    Books, candles, papers, tools. Each item keeps its whole turned footprint
+    inside the surface, items keep apart, and they sit on the surface's layer
+    plus 100 so they draw on top of it. Most dressing is drawn at its real size
+    already, so scale 1.0 is usually right: read list_assets `sizes` first.
+
+    surface_id: the placed table or desk. assets: the items, picked at random.
+    count: how many. margin: fraction of the shorter side kept bare at the edge.
+    jitter: turn each item up to this many degrees from the surface's own turn.
+    seed: a repeatable arrangement. group: file the ids under one name.
+
+    Items too large to fit at this scale are reported in `not_fitted` rather
+    than hung over the edge.
+    """
+    group = _check_group(group)
+    if not assets:
+        raise ValidationError("assets must not be empty")
+    require_positive(scale, "scale")
+    if not 1 <= count <= BATCH_LIMIT:
+        raise ValidationError(f"count must be between 1 and {BATCH_LIMIT}")
+    if not 0 <= margin < 0.5:
+        raise ValidationError("margin must be between 0 and 0.5")
+    surface = bridge.request("get_element", id=surface_id)
+    if surface.get("kind") != "object" or not surface.get("texture_size"):
+        raise ValidationError(f"element {surface_id} is not a placed object with a size")
+    s_scale = float(surface.get("scale", 1.0))
+    s_w, s_h = (float(v) * s_scale for v in surface["texture_size"])
+    measured = _asset_sizes("Objects", assets)
+    item_sizes = [(measured[a][0] * scale, measured[a][1] * scale) for a in assets]
+    spots, not_fitted = layout.on_surface(
+        (float(surface["position"][0]), float(surface["position"][1])),
+        float(surface.get("rotation", 0.0)),
+        (s_w, s_h),
+        item_sizes,
+        count,
+        margin=margin,
+        jitter=jitter,
+        seed=seed,
+    )
+    item_layer = min(int(surface.get("layer", 100)) + 100, 900)
+    entries = [
+        {
+            "asset": assets[spot.index],
+            "x": spot.x,
+            "y": spot.y,
+            "rotation": spot.rotation,
+            "scale": scale,
+            "layer": item_layer,
+        }
+        for spot in spots
+    ]
+    report: dict = {
+        "surface_id": surface_id,
+        "surface_size": [round(s_w), round(s_h)],
+        "layer": item_layer,
+        "items": len(entries),
+    }
+    if not_fitted:
+        report["not_fitted"] = not_fitted
+        report["fit_note"] = (
+            f"{not_fitted} of {count} did not fit: the surface is {round(s_w)}x{round(s_h)} "
+            "and items keep apart and inside its edge. Use fewer, smaller items or a lower scale."
+        )
+    return _place_or_plan(entries, report, group, dry_run)
 
 
 @tool()
@@ -2837,6 +3575,9 @@ def scatter_objects(
     sorting: int = 0,
     layer: int = 100,
     seed: int | None = None,
+    wall_margin: float | None = None,
+    avoid_rects: list[list[float]] | None = None,
+    group: str = "",
 ) -> dict:
     """Scatter objects randomly over a rectangular area, with jittered scale and rotation.
 
@@ -2861,9 +3602,17 @@ def scatter_objects(
       with the Unofficial Patch). Same
       meaning as in place_object; 100 is the default.
 
-    Returns the ids placed, how many attempts it took, and a note if it could not
-    fit the requested count.
+    wall_margin: keep every object's whole reach (half its diagonal, times its
+      scale, which covers any turn) this many woxels clear of any wall. 0 keeps crowns just off
+      the walls; omit to allow anything. Use it for trees beside a building.
+    avoid_rects: [[x, y, w, h], ...] areas no object may reach into: a door's
+      approach, a road, a clearing.
+    group: file the scattered ids under one name; see list_groups.
+
+    Returns the ids placed, how many attempts it took, `kept_out` (candidates
+    refused by the keep-out zones), and a note if it could not fit the count.
     """
+    group = _check_group(group)
     require_rect(rect)
     if not assets:
         raise ValidationError("assets must not be empty")
@@ -2896,10 +3645,19 @@ def scatter_objects(
         params["color"] = color
     if seed is not None:
         params["seed"] = seed
+    if wall_margin is not None:
+        require_finite(wall_margin, "wall_margin")
+        if wall_margin < 0:
+            raise ValidationError("wall_margin must be 0 or more")
+        params["wall_margin"] = wall_margin
+    if avoid_rects:
+        for zone in avoid_rects:
+            require_rect(zone)
+        params["avoid_rects"] = [list(zone) for zone in avoid_rects]
     result = bridge.request("scatter_objects", **params)
     if isinstance(result, dict):
         _SCATTERED.update(int(i) for i in result.get("ids") or [])
-    return result
+    return _record_group(group, result)
 
 
 @tool()
@@ -4332,13 +5090,14 @@ MOVE_ELEMENTS_LIMIT = 1000
 
 @tool()
 def move_elements(
-    ids: list[int],
-    dx: float,
-    dy: float,
+    ids: list[int] | None = None,
+    dx: float = 0.0,
+    dy: float = 0.0,
     rotation: float = 0.0,
     pivot_x: float | None = None,
     pivot_y: float | None = None,
     snap: str = "",
+    group: str = "",
 ) -> dict:
     """Move many elements by the same offset, in one call and ONE undo step.
 
@@ -4358,7 +5117,9 @@ def move_elements(
     the applied offset/rotation and pivot. Inspect these before repeating a prefab.
     snap: rounds dx, dy to the nearest whole grid steps; see get_snap_settings.
       A group of only scatter_objects detail stays loose unless you pass snap.
+    group: move a named group (see list_groups) instead of listing its ids.
     """
+    ids = _ids_or_group(ids, group)
     if not ids:
         raise ValidationError("ids must not be empty")
     if len(ids) > MOVE_ELEMENTS_LIMIT:
@@ -4474,7 +5235,7 @@ def delete_element(id: int) -> dict:
 
 
 @tool()
-def delete_elements(ids: list[int]) -> dict:
+def delete_elements(ids: list[int] | None = None, group: str = "") -> dict:
     """Delete many elements in ONE call and ONE undo step. Reversible with undo().
 
     Deleting one at a time costs a call and an undo slot each, and a large group
@@ -4488,7 +5249,11 @@ def delete_elements(ids: list[int]) -> dict:
     Up to 100 ids. Every id is resolved before anything is deleted: if one is
     unknown the batch changes nothing and names it, rather than leaving you to
     work out how far it got.
+
+    group: delete a named group (see list_groups) instead of listing its ids —
+      the way to rework one zone. undo() brings the whole group back.
     """
+    ids = _ids_or_group(ids, group)
     if not ids:
         raise ValidationError("ids must not be empty")
     if len(ids) > BATCH_LIMIT:
@@ -4567,7 +5332,12 @@ def _shown(image: Image, path: str, what: str) -> list[Image | str]:
 
 
 @tool()
-def screenshot(max_px: int | None = None) -> list[Image | str]:
+def screenshot(
+    max_px: int | None = None,
+    rect: list[float] | None = None,
+    center: list[float] | None = None,
+    tiles_across: float | None = None,
+) -> list[Image | str]:
     """Capture the current Dungeondraft window (the on-screen view) and return it as an image.
 
     Fast; shows exactly what's visible including the current camera framing —
@@ -4583,8 +5353,15 @@ def screenshot(max_px: int | None = None) -> list[Image | str]:
     The result also names the saved file, at full resolution. The user does not
     see the image you receive, so when they ask to see the map, give them that
     path. Captures are kept until newer ones replace them (20 by default).
+
+    To aim and shoot in one call, frame an area first:
+      rect: [x, y, w, h] in woxels — the whole rectangle is fitted to the view.
+      center: [x, y] with tiles_across: that many tiles wide, centred there.
+        About 12-16 tiles across is token zoom, for reviewing a room piece by
+        piece; 30+ shows a whole building.
     """
     _require_max_px(max_px)
+    _aim(rect, center, tiles_across)
     name = f"screenshot-{uuid4().hex}.png"
     res = bridge.request("screenshot", name=name)
     path = _capture_path(res.get("path"), name)
@@ -4779,6 +5556,34 @@ def get_camera() -> dict:
     return bridge.request("get_camera")
 
 
+# A little margin, so an object on the rectangle's edge is not cut by the frame.
+AIM_PAD = 1.04
+
+
+def _aim(rect: list[float] | None, center: list[float] | None, tiles_across: float | None) -> None:
+    """Point the camera at an area before a screenshot; nothing when none is given."""
+    if rect is None and center is None and tiles_across is None:
+        return
+    if rect is not None and (center is not None or tiles_across is not None):
+        raise ValidationError("give rect, or center with tiles_across, not both")
+    view = bridge.request("get_camera").get("viewport_size") or [1920, 1080]
+    width, height = float(view[0]) or 1920.0, float(view[1]) or 1080.0
+    if rect is not None:
+        require_rect(rect)
+        x, y, w, h = (float(value) for value in rect)
+        cx, cy = x + w / 2.0, y + h / 2.0
+        zoom = max(w / width, h / height) * AIM_PAD
+    else:
+        if center is None or len(center) != 2 or tiles_across is None:
+            raise ValidationError("center needs [x, y] and tiles_across a number of tiles")
+        require_finite(center[0], "center x")
+        require_finite(center[1], "center y")
+        require_positive(tiles_across, "tiles_across")
+        cx, cy = float(center[0]), float(center[1])
+        zoom = tiles_across * WOXELS_PER_TILE / width
+    bridge.request("set_camera", x=cx, y=cy, zoom=zoom)
+
+
 @tool()
 def set_camera(
     x: float | None = None,
@@ -4815,7 +5620,7 @@ def focus_element(id: int, zoom: float | None = None) -> dict:
 
 
 @tool()
-def fit_elements(ids: list[int] | None = None, pad: float = 0.15) -> dict:
+def fit_elements(ids: list[int] | None = None, pad: float = 0.15, group: str = "") -> dict:
     """Frame the whole map, or a group of elements, then screenshot() to see it.
 
     ids: omit to frame the entire map — this is the normal way to look at your
@@ -4826,8 +5631,25 @@ def fit_elements(ids: list[int] | None = None, pad: float = 0.15) -> dict:
     Prefer this over set_camera: it computes the zoom for you, and set_camera's
     zoom is woxels-per-pixel, which runs backwards from the intuition that a
     bigger number means closer.
+
+    group: frame a named group (see list_groups), to review one zone.
     """
-    return bridge.request("fit_elements", ids=ids or [], pad=pad)
+    return bridge.request("fit_elements", ids=_ids_or_group(ids, group), pad=pad)
+
+
+@tool()
+def list_groups(name: str = "") -> dict:
+    """The named groups placements were filed under this session, with their ids.
+
+    Placement tools take `group`; delete_elements, move_elements and
+    fit_elements take it back. name: one group only, with members that no
+    longer exist dropped. Groups last while this companion runs and are not
+    saved in the map.
+    """
+    if name:
+        return {"group": name.strip(), "ids": _group_ids(name)}
+    every = groups.all_groups()
+    return {"groups": {key: {"size": len(ids), "ids": ids} for key, ids in every.items()}}
 
 
 # --------------------------------------------------------------------------

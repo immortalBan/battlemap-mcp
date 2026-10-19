@@ -125,6 +125,13 @@ from fixtures on the wall — a wall lantern or sconce on the wall line — and
 put the `add_light` on the fixture. A lantern on the floor mid-corridor reads
 as dropped, and its light as a mistake.
 
+**Make a source and its light together.** Give a candle, lamp or hearth a
+`light` in place_object or place_objects: the glow lands on it and one undo
+removes both. Lights with positions of their own go in one `add_lights` call;
+retune one with `modify_light` rather than deleting and re-adding it. A light
+with no object behind it on purpose — moonlight through a window, a spell —
+takes `intentional="why"`, so validate_scene credits it instead of flagging it.
+
 ## Verify the hierarchy
 
 Call `get_composition_snapshot`, then review a whole-map `export_map` and a
