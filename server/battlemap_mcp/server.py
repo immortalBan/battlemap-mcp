@@ -4051,6 +4051,16 @@ def inspect_map_file(path: str, compare_to: str = "") -> dict:
     return summary
 
 
+def _vtt_blockers(objects: list[dict]) -> list[dict]:
+    """The light-blocking objects, each with the footprint a VTT outline needs.
+
+    The bridge reports texture size, scale, turn and the opaque rect, never
+    bounds: those are derived, as list_elements derives them. Read raw, every
+    blocker lacked bounds and the export carried no object outlines at all.
+    """
+    return [add_bounds(dict(o)) for o in objects if o.get("block_light")]
+
+
 @tool()
 def export_dd2vtt(
     path: str = "",
@@ -4103,7 +4113,7 @@ def export_dd2vtt(
     for light in lights:
         _light_in_editor_units(light)
     objects, _ = _read_all("objects", include_bounds=True)
-    blockers = [o for o in objects if o.get("block_light")]
+    blockers = _vtt_blockers(objects)
 
     started = bridge.request(
         "export_map",
