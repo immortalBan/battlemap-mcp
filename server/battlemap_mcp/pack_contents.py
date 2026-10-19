@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from . import installer
+from . import asset_vocabulary, installer
 from .asset_search import query_words, score_path, searchable_text
 from .errors import ValidationError
 
@@ -275,11 +275,14 @@ def search(
     *,
     mode: str = "tokens",
     limit: int = 20,
+    whole_words: bool = False,
 ) -> dict[str, Any]:
     """Match each term against every searchable pack's paths and tags.
 
     Per term: how many assets matched in each pack (all of them, not just the
     ones returned), and the best `limit` paths across packs, grouped by pack.
+    whole_words: every term word must be a whole word of the filename or tags,
+    as a vocabulary fallback requires (`stand` must not find `nightstand`).
     """
     results = {}
     for term in terms:
@@ -295,6 +298,8 @@ def search(
                     if needle not in path.lower() and needle not in extra.lower():
                         continue
                 elif not all(word in text for word in words):
+                    continue
+                if whole_words and not asset_vocabulary.names(path, term, extra):
                     continue
                 match = score_path(path, term, mode, extra)
                 if match is None:

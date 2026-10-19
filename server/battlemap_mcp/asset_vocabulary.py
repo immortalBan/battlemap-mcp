@@ -102,6 +102,24 @@ def _members(word: str) -> list[str]:
     return out
 
 
+def _name_words(path: str) -> set[str]:
+    """The words of a filename, with letters and digits apart: book_rune_01 -> book, rune, 01."""
+    stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+    return set(re.findall(r"[a-z]+|[0-9]+", stem))
+
+
+def names(path: str, term: str, extra: str = "") -> bool:
+    """Whether every word of `term` is a whole word of the asset's filename or `extra`.
+
+    A swapped word is matched as a word, not a substring: `stand` names
+    `book_stand_01` but not `nightstand_01`, which is a bedside table, and a
+    fallback that lands on it answers a lectern search with the wrong thing.
+    A plain plural counts (`carpet` names `carpets_01`).
+    """
+    have = _name_words(path) | set(re.findall(r"[a-z]+|[0-9]+", extra.lower()))
+    return all(word in have or f"{word}s" in have or f"{word}es" in have for word in _words(term))
+
+
 def alternatives(term: str) -> list[str]:
     """Other searches worth trying for a term that found nothing.
 
