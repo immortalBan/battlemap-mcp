@@ -969,6 +969,12 @@ def _collapse_variants(entry: dict, keep: int) -> dict:
     variants = {str(position[i]): others[i] for i in order if others[i]}
     if variants:
         out["variants"] = variants
+    if not out["colorable"] and entry.get("colorable"):
+        # The colourable ones were variants: say so, not that a listed one is.
+        out["note"] = (
+            "some variants listed under `variants` have a colour mask (often the "
+            "'x' ones): they take color= when placed and show red without one"
+        )
     out["returned"] = len(order)
     return out
 
@@ -1394,7 +1400,7 @@ def list_assets(
 
     # Collapsing variants needs more raw paths to fill `limit` families; the
     # bridge scans colour and size for up to 200.
-    fetch = min(max(limit * 3, limit), 200) if group_variants else limit
+    fetch = min(max(limit * 6, limit), 200) if group_variants else limit
     result = _list_assets_single(
         category, search, fetch, vanilla_only, match_mode, min_score, marker
     )
@@ -3107,7 +3113,9 @@ def place_along_wall(
             reasons.append({"portal": portal.get("id"), "at": round(along)})
     if avoid_existing:
         objects, _ = _read_all("objects")
-        for item in objects:
+        # The bridge reports position, size, scale and turn; the footprint is
+        # derived here, as list_elements does, never read from the listing.
+        for item in (add_bounds(entry) for entry in objects):
             item_layer = int(item.get("layer", 100))
             if item_layer < layer or item_layer >= OVER_WALL_LAYER:
                 continue
@@ -3594,8 +3602,8 @@ def scatter_objects(
       with the Unofficial Patch). Same
       meaning as in place_object; 100 is the default.
 
-    wall_margin: keep every object's whole reach (half its larger side, times
-      its scale) this many woxels clear of any wall. 0 keeps crowns just off
+    wall_margin: keep every object's whole reach (half its diagonal, times its
+      scale, which covers any turn) this many woxels clear of any wall. 0 keeps crowns just off
       the walls; omit to allow anything. Use it for trees beside a building.
     avoid_rects: [[x, y, w, h], ...] areas no object may reach into: a door's
       approach, a road, a clearing.

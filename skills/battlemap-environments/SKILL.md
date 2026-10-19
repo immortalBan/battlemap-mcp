@@ -27,7 +27,7 @@ than the building beside it is a composition error, not a detail.
 **Keep canopies off the buildings.** A tree on a canopy layer (700 and up) draws
 over walls, windows and the room inside them. Scatter trees with
 `scatter_objects(wall_margin=0)`, which keeps each object's whole reach — half
-its larger side, times its scale — off every wall, and `avoid_rects` for a
+its diagonal, times its scale, so any turn of it — off every wall, and `avoid_rects` for a
 road or a door's approach. Without them the rectangle bounds only the centres,
 not the crowns. `validate_placements` reports a canopy over a wall under
 `crossing_walls` and over a window under `blocking_portals`.

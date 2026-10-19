@@ -4507,7 +4507,9 @@ func _scatter_objects(req : Dictionary) -> Dictionary:
 	var min_gap = float(req.get("min_gap", 0.0))
 	var color = str(req.get("color", ""))
 	# Keep-out zones count each object's reach, not just its centre: a tree's
-	# crown is drawn far past the point it was placed at.
+	# crown is drawn far past the point it was placed at. Reach is half the
+	# texture's DIAGONAL, the circle any turn of it stays inside; half its larger
+	# side let a turned tree's corner over a wall.
 	var wall_margin = -1.0
 	if req.has("wall_margin"):
 		wall_margin = float(req["wall_margin"])
@@ -4522,7 +4524,7 @@ func _scatter_objects(req : Dictionary) -> Dictionary:
 		for candidate in assets:
 			var probe = _asset_tex("Objects", str(candidate))
 			var dims = probe.get_size() if probe != null else Vector2(0, 0)
-			reach_of[str(candidate)] = max(dims.x, dims.y) * 0.5
+			reach_of[str(candidate)] = dims.length() * 0.5
 	var rejected = 0
 
 	var rng = RandomNumberGenerator.new()

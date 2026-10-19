@@ -114,14 +114,33 @@ def test_a_wall_run_is_flush_faces_the_room_and_clears_the_door(bridge):
 
 
 def test_a_wall_run_stops_short_of_an_object_already_there(bridge):
-    bridge.objects = [{"id": 9, "layer": 100, "bounds": [1300, 60, 1500, 200]}]
+    # As the real bridge reports it: no bounds, only what they are derived from.
+    bridge.objects = [
+        {
+            "id": 9,
+            "layer": 100,
+            "position": [1400, 130],
+            "rotation": 0,
+            "scale": 1,
+            "texture_size": [200, 140],
+        }
+    ]
     server.place_along_wall([0, 0], [2048, 0], [1024, 1024], [SHELF])
     xs = [e["x"] for e in bridge.sent("place_objects")[0]["objects"]]
     assert len(xs) == 1 and xs[0] < 872  # the right-hand stretch is now too short
 
 
 def test_a_rug_under_the_run_does_not_count_as_taken(bridge):
-    bridge.objects = [{"id": 9, "layer": 0, "bounds": [100, 60, 1900, 600]}]
+    bridge.objects = [
+        {
+            "id": 9,
+            "layer": 0,
+            "position": [1000, 330],
+            "rotation": 0,
+            "scale": 1,
+            "texture_size": [1800, 540],
+        }
+    ]
     server.place_along_wall([0, 0], [2048, 0], [1024, 1024], [SHELF])
     assert len(bridge.sent("place_objects")[0]["objects"]) == 2
 
@@ -305,6 +324,7 @@ def test_colour_variants_collapse_into_one_entry(monkeypatch):
     assert result["variants"] == {"0": ["res://p/book_1b.png", "res://p/book_1x.png"]}
     assert result["sizes"] == [[1, 1], [3, 3], [4, 4]]
     assert result["colorable"] == []
+    assert "variants" in result["note"]
 
 
 def test_validate_scene_credits_an_intentional_light():
