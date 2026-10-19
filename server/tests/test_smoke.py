@@ -67,15 +67,16 @@ def test_list_assets_can_request_only_vanilla_assets(monkeypatch):
     from battlemap_mcp import server
 
     seen = {}
+    found = {"assets": ["res://textures/objects/carpet_01.png"]}
 
     def request(command, **params):
         seen["command"] = command
         seen["params"] = params
-        return {"assets": []}
+        return found
 
     monkeypatch.setattr(server.bridge, "request", request)
 
-    assert server.list_assets("Objects", "carpet", 200, vanilla_only=True) == {"assets": []}
+    assert server.list_assets("Objects", "carpet", 200, vanilla_only=True) == found
     assert seen == {
         "command": "list_assets",
         "params": {
@@ -213,6 +214,10 @@ def test_verify_live_covers_every_tool_that_can_be_checked_live():
         # Server-side wait that sends only get_operation, which is exercised
         # here; its polling, failure and timeout paths have unit tests.
         "get_export",
+        # Companion-only: read and write the asset-notes file in the state
+        # folder and never reach the editor. Unit tests cover them on a temp file.
+        "annotate_assets",
+        "list_asset_notes",
         # Python-only cleanup, not a bridge command. Do not erase the user's
         # existing captures during live verification; covered with temp files.
         "clear_captures",

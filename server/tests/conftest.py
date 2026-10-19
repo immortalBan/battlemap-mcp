@@ -45,6 +45,15 @@ def _isolated_panel_settings(monkeypatch, tmp_path):
     monkeypatch.setattr(user_settings, "_cache", None)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_asset_notes(monkeypatch, tmp_path):
+    """Never read or write the real asset-notes file from a test."""
+    from battlemap_mcp import asset_notes
+
+    monkeypatch.setattr(asset_notes, "path", lambda: tmp_path / "asset_notes.json")
+    monkeypatch.setattr(asset_notes, "_cache", None)
+
+
 @pytest.fixture
 def create_file_symlink_or_skip():
     return _create_file_symlink_or_skip

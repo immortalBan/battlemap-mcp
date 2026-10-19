@@ -15,14 +15,22 @@ shadows fall as broad dark bands that get mistaken for terrain, and bare trunks
 stick out from under them with no crown in sight.
 
 Never assume a family shares a size, and never carry a number over from another
-map: read `texture_size` from `list_assets` or `get_element` for the assets you
-actually chose, decide how many TILES the thing should occupy, and set the
-scale from that:
+map: read `sizes` from `list_assets` (or `texture_size` from `get_element`) for
+the assets you actually chose, decide how many TILES the thing should occupy,
+and set the scale from that:
 
     scale = desired_tiles * 256 / texture_px
 
 Say the intended canopy size in tiles when you plan a treeline. A tree larger
 than the building beside it is a composition error, not a detail.
+
+**Keep canopies off the buildings.** A tree on a canopy layer (700 and up) draws
+over walls, windows and the room inside them, so its CENTRE must stand at least
+its canopy radius plus half the wall's thickness away from every wall. Inset a
+`scatter_objects` rectangle by that radius rather than drawing it up to the
+building: `scatter_objects` keeps its centres inside the rectangle, not its
+crowns. `validate_placements` reports a canopy over a wall under
+`crossing_walls` and over a window under `blocking_portals`.
 
 Make the land readable before making it busy. Terrain layering, a dominant
 silhouette and a clear route should survive a whole-map view before incidental

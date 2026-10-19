@@ -40,6 +40,45 @@ third-party tools is listed as not searched; judge that one by its name.
 names the pack. `preview_assets` is deliberately exempt, so a pack's contents
 can still be looked at while deciding whether to include it.
 
+**Learn the assets before you choose them, and leave what you learn behind.**
+Asset names are the author's vocabulary and say little about the drawing: a
+`bookcase_1a` can be an L-shaped corner unit, a `candelabra` can be drawn
+side-on, a `cart_1a` can be four tiles long. One build spent a dozen searches
+and four rounds of test placements finding that out. In order:
+
+1. `list_asset_notes(pack=...)` for the art family you are leaning towards.
+   Earlier sessions' notes say which pieces proved right and which to avoid.
+2. `list_assets(pack=..., searches=[...])` for the brief's key pieces. `pack`
+   keeps you inside one art family. Each listing carries `sizes` — texture
+   [width, height] in woxels at scale 1, 256 to a tile — and any `notes`.
+   Measure from `sizes`; never place a test object to read its size.
+3. A term that matches nothing is retried under the names libraries use for
+   the same thing. `matched_with` says which word matched (`rug` → `carpet`);
+   check the result is the thing you meant.
+4. `preview_assets` for the families you will commit to. Its caption lists
+   the cells in order with each canvas and drawn area, so you need not keep
+   track of the order yourself.
+5. When a preview, a placement or a render shows you something the name does
+   not say, record it with `annotate_assets` in the same turn: the shape or use
+   ("corner unit"), a facing exception, a size surprise, where the better
+   variant lives, or role `avoid` with the reason. Do not record what the name
+   already says. A note that proved wrong is corrected the same way, or
+   cleared with an empty note.
+
+**Load the build tools in one go.** Most battlemap tools are deferred. Fetch the
+set a build uses in a single `ToolSearch` select — including `move_element`,
+`move_elements`, `modify_object` and `delete_elements`, which a rework needs —
+rather than discovering each one mid-build. A missing `move_element` is how one
+build fell back to deleting and re-placing objects it only needed to shift.
+
+**Script a room of more than about twenty placements.** Compute positions in a
+short script from the room's wall lines and the `sizes` you read, write them to
+a JSON file and pass it as `place_objects(file=...)` (an absolute path; on
+Windows the long form, not an `~1` short name). Batch ids come back contiguous
+in entry order, so record which id range is which group — "south tables",
+"wall shelving" — as you place. A rework then deletes a group by its range
+instead of reverse-engineering ids from the listing.
+
 **Check the grid the user snaps to.** Call `get_snap_settings`. When the
 Custom Snap Mod is enabled (`auto_snaps: true`), the user works on its grid —
 often hexes — and anything you place by coordinates misses it unless you pass

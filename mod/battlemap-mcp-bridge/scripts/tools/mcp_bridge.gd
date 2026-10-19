@@ -2541,6 +2541,7 @@ func _preview_assets(req : Dictionary) -> Dictionary:
 
 	var missing := []
 	var colorable := []
+	var sizes := {}
 	for i in range(assets.size()):
 		var asset = str(assets[i])
 		var tex = _asset_tex(category, asset)
@@ -2549,6 +2550,11 @@ func _preview_assets(req : Dictionary) -> Dictionary:
 		if tex == null:
 			missing.append(asset)
 			continue
+		# Canvas and drawn area: a thumbnail fitted to its cell hides both, and
+		# flush placement against a wall needs the drawn depth, not the canvas.
+		var dims = _tex_dims(tex)
+		if dims != null:
+			sizes[asset] = { "size": dims, "opaque_rect": _opaque_rect(tex) }
 		var img = tex.get_data()
 		if img == null:
 			missing.append(asset)
@@ -2590,6 +2596,7 @@ func _preview_assets(req : Dictionary) -> Dictionary:
 		return _err("save_png failed (err %d): %s" % [err, path])
 	return _ok({ "path": path, "columns": columns, "rows": rows, "cell_px": cell,
 		"count": assets.size(), "colorable": colorable, "missing": missing,
+		"sizes": sizes,
 		"width": sheet.get_width(), "height": sheet.get_height() })
 
 # Wall textures are either greyscale masks the wall tool colours at placement or
@@ -2705,14 +2712,21 @@ func _list_assets(req : Dictionary) -> Dictionary:
 			out.append(path)
 
 	var colorable := []
+	# The scan already loads every texture it returns, so its size costs
+	# nothing more: without it the only way to learn how big an asset is was
+	# to place one, read it back and delete it.
+	var sizes := []
 	if out.size() <= COLORABLE_SCAN_MAX:
 		for i in range(out.size()):
-			if _mask_fraction(_asset_tex(category, out[i])) > 0.0:
+			var tex = _asset_tex(category, out[i])
+			if _mask_fraction(tex) > 0.0:
 				colorable.append(i)
+			sizes.append(_tex_dims(tex))
 
 	return _ok({ "category": category, "total": all.size() - hidden,
 		"total_unfiltered": all.size(), "matched": matched,
 		"returned": out.size(), "assets": out, "colorable": colorable,
+		"sizes": sizes,
 		"hidden_unusable": hidden,
 		"colorable_scanned": out.size() <= COLORABLE_SCAN_MAX,
 		"colorable_are": "indices into assets",
@@ -6264,6 +6278,16 @@ func _xy(req : Dictionary, fallback : Vector2) -> Vector2:
 
 func _vec(v : Vector2) -> Array:
 	return [v.x, v.y]
+
+# [width, height] of a texture in pixels, which is woxels at scale 1; null when
+# there is no texture to measure.
+func _tex_dims(tex):
+	if tex == null or not tex.has_method("get_size"):
+		return null
+	var size = tex.get_size()
+	if size.x <= 0 or size.y <= 0:
+		return null
+	return [int(size.x), int(size.y)]
 
 func _points(raw) -> PoolVector2Array:
 	var pts := PoolVector2Array()
