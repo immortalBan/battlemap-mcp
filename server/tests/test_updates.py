@@ -124,7 +124,7 @@ def test_check_connection_is_quiet_when_current(monkeypatch, capsys, state):
 )
 def test_the_notice_links_this_computers_files(system, machine, companion):
     """Runtime behavior and validation."""
-    base = "https://github.com/thekannen/battlemap-mcp/releases/download/v1.2.0/"
+    base = "https://github.com/immortalBan/battlemap-mcp/releases/download/v1.2.0/"
     links = updates.downloads("1.2.0", system, machine)
     assert links["mod"] == base + "battlemap-mcp-mod-1.2.0.zip"
     assert links["checksums"] == base + "SHA256SUMS"

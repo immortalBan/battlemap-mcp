@@ -2,8 +2,8 @@
   "name": "battlemap-mcp",
   "description": "battlemap-mcp: build battle maps in a running Dungeondraft.",
   "owner": {
-    "name": "thekannen",
-    "url": "https://github.com/thekannen/battlemap-mcp"
+    "name": "immortalBan",
+    "url": "https://github.com/immortalBan/battlemap-mcp"
   },
   "plugins": [
     {

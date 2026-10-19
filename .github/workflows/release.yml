@@ -21,7 +21,7 @@ jobs:
       - name: Require the release repository
         env:
           GH_REPO: ${{ github.repository }}
-        run: test "$GH_REPO" = "thekannen/battlemap-mcp"
+        run: test "$GH_REPO" = "immortalBan/battlemap-mcp"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -152,7 +152,7 @@ jobs:
 
   draft:
     needs: [validate, assemble]
-    if: github.event_name == 'push' && github.ref_type == 'tag' && github.repository == 'thekannen/battlemap-mcp'
+    if: github.event_name == 'push' && github.ref_type == 'tag' && github.repository == 'immortalBan/battlemap-mcp'
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -171,19 +171,19 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          test "$GH_REPO" = "thekannen/battlemap-mcp"
+          test "$GH_REPO" = "immortalBan/battlemap-mcp"
           cp notes/summary.md notes.md
           cat >> notes.md <<'NOTES'
 
           ## Install or update
 
-          Pick one way to connect your AI app: download the mod ZIP and the
-          companion for your platform and follow the [installation guide](https://github.com/thekannen/battlemap-mcp#get-started),
-          or install from Claude: open the `.mcpb` in the Claude desktop app, or
-          install the battlemap-mcp plugin in Claude Code ([how](https://github.com/thekannen/battlemap-mcp#install-from-claude)).
-          See [CHANGELOG.md](https://github.com/thekannen/battlemap-mcp/blob/main/CHANGELOG.md) for what changed.
+          Download the mod ZIP and the companion for your platform and follow
+          the [installation guide](https://github.com/immortalBan/battlemap-mcp#get-started).
+          This fork publishes Windows and Linux companions only; there is no
+          macOS companion or Claude `.mcpb` bundle.
+          See [CHANGELOG.md](https://github.com/immortalBan/battlemap-mcp/blob/main/CHANGELOG.md) for what changed.
 
-          SHA256SUMS covers every download. The Windows companion is unsigned;
-          the macOS companions, including those in the `.mcpb`, are signed and notarized.
+          This is a fork of [thekannen/battlemap-mcp](https://github.com/thekannen/battlemap-mcp).
+          SHA256SUMS covers every download. The Windows companion is unsigned.
           NOTES
           gh release create "$RELEASE_TAG" release/* --repo "$GH_REPO" --verify-tag --draft --title "$RELEASE_TAG" --notes-file notes.md

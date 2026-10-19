@@ -1036,7 +1036,7 @@ def mcpb_name(version):
 def mcpb_url(version):
     """Where a published release keeps its bundle; plugin.json points here."""
     return (
-        "https://github.com/thekannen/battlemap-mcp/releases/download/"
+        "https://github.com/immortalBan/battlemap-mcp/releases/download/"
         f"v{version}/{mcpb_name(version)}"
     )
 
@@ -1071,13 +1071,13 @@ def mcpb_manifest(version, platforms):
             "it and shows what it will change before it does."
         ),
         "author": {
-            "name": "thekannen",
-            "url": "https://github.com/thekannen/battlemap-mcp",
+            "name": "thekannen, immortalBan",
+            "url": "https://github.com/immortalBan/battlemap-mcp",
         },
-        "homepage": "https://github.com/thekannen/battlemap-mcp",
+        "homepage": "https://github.com/immortalBan/battlemap-mcp",
         "repository": {
             "type": "git",
-            "url": "https://github.com/thekannen/battlemap-mcp",
+            "url": "https://github.com/immortalBan/battlemap-mcp",
         },
         "license": "MIT",
         "icon": "icon.png",
