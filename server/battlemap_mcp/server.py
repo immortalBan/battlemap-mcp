@@ -1050,7 +1050,8 @@ def _other_word(
 
     Returns the first listing that found something, the word that found it, and
     every word tried. Alternatives are only ever tried after an empty result, so
-    a term that matched is never second-guessed.
+    a term that matched is never second-guessed. A swapped word must name the
+    asset as a whole word: `stand` inside `nightstand` is not a lectern.
     """
     tried: list[str] = []
     for alternative in asset_vocabulary.alternatives(term):
@@ -1058,9 +1059,37 @@ def _other_word(
         found = _list_assets_single(
             category, alternative, limit, vanilla_only, match_mode, min_score, marker
         )
+        found = _named_by(found, alternative)
         if found.get("assets"):
             return found, alternative, tried
     return None, "", tried
+
+
+def _named_by(found: dict, word: str) -> dict:
+    """A listing cut to the assets whose filename has `word` as a whole word.
+
+    Every per-asset list stays aligned with `assets`, and `colorable` indices are
+    renumbered to match.
+    """
+    assets = list(found.get("assets", []))
+    keep = [i for i, path in enumerate(assets) if asset_vocabulary.names(path, word)]
+    if len(keep) == len(assets):
+        return found
+    out = dict(found)
+    for key in ("assets", "sizes", "scores", "matched_terms"):
+        values = found.get(key)
+        if isinstance(values, list) and len(values) == len(assets):
+            out[key] = [values[i] for i in keep]
+    renumber = {old: new for new, old in enumerate(keep)}
+    out["colorable"] = [
+        renumber[i]
+        for i in found.get("colorable", [])
+        if isinstance(i, int) and not isinstance(i, bool) and i in renumber
+    ]
+    removed = len(assets) - len(keep)
+    out["returned"] = len(keep)
+    out["matched"] = max(len(keep), int(found.get("matched", len(assets))) - removed)
+    return out
 
 
 def _list_assets_many(
@@ -1408,7 +1437,12 @@ def search_pack_contents(
         for alternative in asset_vocabulary.alternatives(term):
             tried.append(alternative)
             retry = pack_contents.search(
-                available, [alternative], category, mode=match_mode, limit=per_term
+                available,
+                [alternative],
+                category,
+                mode=match_mode,
+                limit=per_term,
+                whole_words=True,
             )[alternative]
             if retry["matched_by_pack"]:
                 results[term] = {**retry, "matched_with": alternative}

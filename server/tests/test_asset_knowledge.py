@@ -42,6 +42,14 @@ def test_alternatives_are_capped():
     assert len(asset_vocabulary.alternatives("chair stool")) <= asset_vocabulary.MAX_ALTERNATIVES
 
 
+def test_a_swapped_word_names_the_asset_as_a_whole_word():
+    assert asset_vocabulary.names("res://p/objects/book_stand_01.png", "stand")
+    assert not asset_vocabulary.names("res://p/objects/nightstand_01.png", "stand")
+    assert asset_vocabulary.names("res://p/objects/carpets02.png", "carpet")
+    assert asset_vocabulary.names("res://p/objects/x_01.png", "lectern", extra="Lectern, wood")
+    assert asset_vocabulary.names("res://p/objects/carpet_round_1.png", "round carpet")
+
+
 # --- notes ------------------------------------------------------------------
 
 
@@ -156,6 +164,45 @@ def test_a_blank_term_is_retried_under_another_name_and_says_so(monkeypatch):
     assert result["matched_with"] == "carpet"
     assert "rug" in result["note"]
     assert [params["search"] for _, params in calls] == ["rug", "carpet"]
+
+
+def test_a_fallback_drops_substring_lookalikes_and_keeps_lists_aligned(monkeypatch):
+    nightstand = "res://packs/AbC123/textures/objects/nightstand_01.png"
+    book_stand = "res://packs/AbC123/textures/objects/book_stand_01.png"
+
+    def answer(command, params):
+        if params.get("search") == "stand":
+            return {
+                "assets": [nightstand, book_stand],
+                "sizes": [[143, 156], [200, 120]],
+                "colorable": [1],
+                "matched": 2,
+                "returned": 2,
+            }
+        return {"assets": [], "colorable": []}
+
+    _bridge(monkeypatch, answer)
+    result = server.list_assets("Objects", "lectern")
+    assert result["matched_with"] == "stand"
+    assert result["assets"] == [book_stand]
+    assert result["sizes"] == [[200, 120]]
+    assert result["colorable"] == [0]
+    assert result["returned"] == 1
+
+
+def test_a_fallback_with_only_lookalikes_counts_as_not_found(monkeypatch):
+    nightstand = "res://packs/AbC123/textures/objects/nightstand_01.png"
+    _bridge(
+        monkeypatch,
+        lambda command, params: {
+            "assets": [nightstand] if params.get("search") == "stand" else [],
+            "colorable": [],
+        },
+    )
+    result = server.list_assets("Objects", "lectern")
+    assert result["assets"] == []
+    assert "matched_with" not in result
+    assert "stand" in result["also_tried"]
 
 
 def test_a_term_that_matched_is_never_second_guessed(monkeypatch):
