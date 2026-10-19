@@ -28,9 +28,20 @@ colour, trees mass along the edges with their shadows and leave a clearing in
 the middle, ground detail is a fine sprinkle, and an encounter gets a camp,
 a ruin or a cart that explains it.
 
+**Waterfalls that sit in the river.** The river widens at the lip to meet the
+waterfall art's stone pillars, so water and foam start flush against the stone
+instead of leaving a strip of grass beside the fall, and the banks fade out
+under the cliff rather than stopping square.
+
+**Cliffs without holes.** Earth goes under the whole cliff, so no grass shows
+between its boulders; pools run in under the cliff foot; rock walls are laid
+so no stones are cut through where the line bends; and stairs go where
+someone needs to climb, not in a mirrored pattern.
+
 **Fewer stray lines on the ground.** Your assistant avoids the thin dark seams
-that uneven terrain painting leaves under textured blending, and the pale band
-a shadowed rock wall draws beside a cliff.
+that uneven terrain painting leaves under textured blending, the pale band
+a shadowed rock wall draws beside a cliff, and the seam left where two water
+bodies overlap.
 
 ## 1.4.1 — 2026-10-19
 

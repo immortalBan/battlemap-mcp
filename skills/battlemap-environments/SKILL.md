@@ -222,7 +222,9 @@ edge in three parts, from the land inward:
    `search_pack_contents` for "cliff", "bank" and "edge".
 2. **A light shallows band just inside the edge.** A river-edge path drawn just
    inside the waterline, such as `river_edge` from Into The Woods, so the water
-   pales where it is shallow.
+   pales where it is shallow. Judge it on the map before keeping it: over
+   `add_water` some edge paths read as a dark stripe down the channel instead,
+   and then the shallow colour of `set_water_style` does this job alone.
 3. **A darker deep middle.** `set_water_style(deep_color=..., shallow_color=...)`
    after `add_water`, so the channel darkens away from the banks.
 
@@ -231,7 +233,19 @@ gravel or cobbles under the water draw a cobbled riverbed across the whole
 channel. Leave plain earth or the base under the water and let rocks supply the
 texture. A wide gravel band along the shore is not how a bank is drawn either:
 the transition band at a river is the cut and the shallows, a tile or less, with
-the grass meeting the cut directly.
+the grass meeting the cut directly. Keep the cut thin — at about half its
+default width a dirt-cliff path reads as a bank; at full width it reads as a
+second cliff.
+
+**Keep the water one outline, and draw the banks last.** A second `add_water`
+that overlaps the first becomes a separate body with its own deep-to-shallow
+gradient, and the join shows as a seam or a diamond of deep colour in the
+middle of a pool. When the shape changes, erase the level's water
+(`add_water(rect=<whole map>, invert=True)`) and redraw one merged outline.
+Then draw the banks from that final outline, all walked the same way round it
+so the cut faces the water on every shore. Where a bank meets a cliff, a fall
+or a bridge, end it underneath that thing and set `fade_in` / `fade_out` on
+that end: a bank that stops square in the open reads as a cut-off stroke.
 
 **Rivers meander and change width.** A straight channel of even width reads as
 a canal. Let the river bend, narrow where it runs fast — at rapids, and at the
@@ -255,6 +269,18 @@ stream many small falls, each with its pool, its foam and its rocks at the
 foot, and that reads as land; one tall fall in the middle of flat ground reads
 as a set piece.
 
+**Fit the river to the waterfall art, not the art to the river.** A waterfall
+object is drawn for a channel of one particular width: CrossHead's falls stand
+between two stone pillars, and the water and the foam are drawn to start flush
+against their inner faces. If the river is narrower, a strip of grass and bank
+shows between the water and the stone and the fall looks pasted on. Measure the
+art first — in a `preview_assets` cell the scale is known exactly (cell width
+over texture width), which a screenshot's framing does not guarantee — and
+multiply by the object's scale. Then widen the river at the lip to the pillars'
+inner faces, tapering back to its normal width over three or four tiles
+upstream, and end the cliff paths and walls under the pillars rather than in
+the gap beside them.
+
 ## Elevation is contour lines
 
 Height on a top-down map is drawn the way a survey map draws it: as continuous
@@ -273,9 +299,26 @@ so the eye accepts a slope down.
   block movement and sight in a VTT, but an outdoor rock wall drawn with the
   default `shadow=True` lays a lighter, square-ended band about a tile wide
   along one side, which reads as a strip of paving beside the cliff.
+- **Put a wall vertex every texture length.** A rock wall's texture is laid
+  in runs of its own length (`sizes` from `list_assets(category='Walls')`),
+  and at a vertex in the middle of a run the boulders are cut through. Resample
+  each cliff-lip polyline so its points fall one texture length apart.
+- **Paint earth under the whole cliff band.** Rock-top and rock-base paths are
+  boulders with gaps between them, and whatever terrain lies under the band
+  shows through those gaps — grass between the stones reads as holes in the
+  cliff. Fill the band, lip to foot, with a dark earth close to the rock's
+  colour, and a strip of darker grass along the foot reads as the cliff's
+  shadow.
+- **Water that meets a cliff runs in under it.** Where a pool touches a cliff
+  foot, extend the water up into the face so no grass shows between the two.
+  Push it toward the cliff only: grow the outline in every direction and it
+  spreads along the foot as straight-edged tongues.
 - **Stairs go into the face, not along it.** Cut a notch into the cliff and run
   the steps perpendicular to the face, with a landing where they arrive, so a
-  token can see where the climb starts and ends.
+  token can see where the climb starts and ends. Place them where someone needs
+  to climb, not at matching positions on every tier: two staircases mirrored
+  across the map read as a pattern. Lead a worn track from each one to where it
+  goes, a camp or a road, and keep tree crowns off the top step.
 
 ## A crossing is one span, and water has to read as water
 
@@ -344,7 +387,11 @@ map will be wrong somewhere.
   who lives here than another dozen shrubs. An open encounter map needs the
   same evidence to give the fight a reason: a camp (tents, a campfire,
   crates), a ruin, a cart, a boat drawn up at a landing — beside the route, in
-  the clearing, where it explains why anyone stopped here.
+  the clearing, where it explains why anyone stopped here. Lay its pieces out
+  from their real footprints: firewood placed on a ring around a fire can land
+  on a tent's canvas, and at map zoom that reads as a mistake, not a camp. Check
+  `stacked` in `validate_placements` and move anything resting on something it
+  could not stand on.
 
 - **A plant on hard ground needs a bed.** Soil, a planter or a kerbed border
   under every planted cluster on paving; plants straight on flagstone read as
