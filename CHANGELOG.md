@@ -4,6 +4,34 @@ What changed in each release, written for the people using it. Versions cover
 the companion, the Dungeondraft mod and the map-making skills together; the
 wire protocol between them is versioned separately and is currently 25.
 
+## Unreleased (1.4.2)
+
+Outdoor maps look more like the professional ones they are measured against:
+rivers with real banks, height drawn as terraces, and woodland that frames the
+fight instead of filling it.
+
+**Rivers that read as rivers.** Water gets an earth cut along both banks, pale
+shallows inside the edge and a darker middle, over a smooth bed. Rivers bend,
+narrow at rapids and crossings, widen into pools under falls, and carry rocks
+in clusters where the water meets something, with foam where it breaks.
+
+**Height as terraces.** Cliffs run as continuous lines that leave the map,
+close on themselves or meet water, drawn thick enough to read as height, with
+several small falls where a stream steps down and stairs cut into the face.
+
+**Bridges and roads where a builder would put them.** A bridge crosses at a
+narrow point, square to the flow, with both ends on the banks; roads are two
+to four tiles wide with soft verges.
+
+**Woodland, ground and a reason to be there.** Summer grass is chosen for its
+colour, trees mass along the edges with their shadows and leave a clearing in
+the middle, ground detail is a fine sprinkle, and an encounter gets a camp,
+a ruin or a cart that explains it.
+
+**Fewer stray lines on the ground.** Your assistant avoids the thin dark seams
+that uneven terrain painting leaves under textured blending, and the pale band
+a shadowed rock wall draws beside a cliff.
+
 ## 1.4.1 — 2026-10-19
 
 Furnishing a room takes far fewer steps: your assistant lines walls, seats
