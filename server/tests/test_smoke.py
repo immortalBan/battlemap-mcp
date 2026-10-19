@@ -218,6 +218,13 @@ def test_verify_live_covers_every_tool_that_can_be_checked_live():
         # folder and never reach the editor. Unit tests cover them on a temp file.
         "annotate_assets",
         "list_asset_notes",
+        # Composed from get_element, list_elements, list_assets and
+        # place_objects, all exercised here; their geometry is unit-tested in
+        # test_layout.py and the group registry in test_groups.py.
+        "place_along_wall",
+        "seat_around",
+        "dress_surface",
+        "list_groups",
         # Python-only cleanup, not a bridge command. Do not erase the user's
         # existing captures during live verification; covered with temp files.
         "clear_captures",

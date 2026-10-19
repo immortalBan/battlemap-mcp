@@ -97,9 +97,23 @@ those gaps.
   `list_asset_notes` lists those notes. They are kept on your computer, in the
   integration's state folder, and appear beside the asset in later listings and
   previews.
+- **Furnishing helpers (1.4.1).** `place_along_wall` lines a stretch of wall
+  flush and facing the room, clear of doors, windows, corners and existing
+  furniture; `seat_around` spaces chairs from a placed table's real edges;
+  `dress_surface` keeps books and candles inside a desk top, one layer up.
+- **Groups (1.4.1).** Placements take `group="hall/south tables"`, and
+  `delete_elements`, `move_elements`, `fit_elements` and `list_groups` take the
+  name back, so a zone is reworked in one call.
+- **Lights with their sources (1.4.1).** `place_object(s)` take `light`, made in
+  the same undo step; `add_lights` adds many at once, `modify_light` changes one
+  in place, and `intentional` marks moonlight or magic for `validate_scene`.
+- **Smaller fixes (1.4.1).** `scatter_objects(wall_margin=..., avoid_rects=...)`
+  keeps crowns off walls; `screenshot(rect=...)` or `center` + `tiles_across`
+  aims and shoots in one call; `preview_assets(true_scale=True)` shows real
+  proportions; `list_assets(group_variants=True)` collapses colour variants.
 - **Skills updated to match:** look up notes and sizes before choosing assets
-  and record what you learn; compute flush offsets from wall thickness; read
-  dressing scale from sizes; keep tree canopies off buildings.
+  and record what you learn; use the helpers and groups instead of hand-computed
+  layouts; keep tree canopies off buildings.
 
 The fork changes the mod as well as the companion, so install both from this
 fork's [Releases](https://github.com/immortalBan/battlemap-mcp/releases), from

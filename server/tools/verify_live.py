@@ -315,6 +315,18 @@ def main() -> int:
     light = check("add_light", lambda: bridge.request("add_light", x=cx, y=cy, energy=1.5))
     if light:
         created_ids.append(light["id"])
+        check(
+            "modify_light",
+            lambda: bridge.request("modify_light", id=light["id"], energy=0.8, color="#ffcc88"),
+        )
+    lights = check(
+        "add_lights",
+        lambda: bridge.request(
+            "add_lights", lights=[{"x": cx - 200, "y": cy}, {"x": cx + 200, "y": cy}]
+        ),
+    )
+    if lights:
+        created_ids.extend(lights.get("ids") or [])
 
     # --- query / modify ---
     listed = check(

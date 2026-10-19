@@ -4,6 +4,36 @@ What changed in each release, written for the people using it. Versions cover
 the companion, the Dungeondraft mod and the map-making skills together; the
 wire protocol between them is versioned separately and is currently 25.
 
+## 1.4.1 — 2026-10-19
+
+Furnishing a room takes far fewer steps: your assistant lines walls, seats
+tables and dresses desks in one request each, reworks a whole zone by name, and
+lights a candle as it places it.
+
+**Line a wall in one step.** Shelving, benches and cabinets go along a stretch
+of wall flush against it, facing the room, with doors, windows and corners
+kept clear and nothing pushed into furniture that is already there.
+
+**Seat a table and dress a desk.** Chairs are spaced from a table's real edges,
+all facing it at one size, or ringed around a round table. Books, candles and
+papers stay wholly on a desk or table top and draw above it.
+
+**Rework a zone by name.** Everything placed for "the south reading tables"
+can be filed under that name, then moved, framed for a closer look, or removed
+together and brought back with one undo.
+
+**Light as you place.** A candle, lamp or hearth can carry its light, made in
+the same step and removed with it. A pass of lights is one undo, a light can be
+dimmed or recoloured in place, and moonlight through a window or a spell's
+glow can be marked as intended, so the map check no longer flags it.
+
+**Trees stay off the roof.** Scattered trees, shrubs and clutter can keep
+their whole crown clear of walls and out of chosen areas, such as a road.
+
+**Look closer, compare honestly.** Screenshots can frame an area or a number of
+tiles in one request. Previews can show assets at their true relative sizes,
+and searches can list a drawing's colour variants as one entry.
+
 ## 1.4.0 — 2026-10-19
 
 The first release of the immortalBan fork: your assistant finds the right

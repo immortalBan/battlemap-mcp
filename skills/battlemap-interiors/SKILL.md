@@ -94,13 +94,24 @@ corridor, a dress form mid-floor, or a bed on a rug in the centre of the room
 with its headboard against nothing reads as dropped. A piece you cannot give
 an anchor is a candidate for removal, not for the middle of the floor.
 
-**Seating around a table is a set, not a scatter.** Measure the table with
-`get_element` on its id (`bounds`, after its turn and scale), then derive the chairs from its edges: evenly spaced
-along each long side, the head chairs centred on the ends, one scale for the
-whole set, and one place setting in front of each chair. Chairs placed at
-"about" the edge come out uneven in spacing and in size, and a long table
-shows it at once. Keep the variation small here: a degree or two of turn, not
-a different size per chair.
+**Seating around a table is a set, not a scatter.** Seat it with
+`seat_around(table_id, [chair])`: chairs evenly along each long side
+(`per_side`), one on each end (`ends`) or a ring for a round table (`around`),
+all at one scale, facing the table, a degree or two of turn each. It measures
+the table as placed, after its turn and scale. Chairs placed at "about" the
+edge come out uneven in spacing and in size, and a long table shows it at once.
+Then put one place setting in front of each chair with `dress_surface`.
+
+**Line walls with `place_along_wall`.** Give it two points on the wall's centre
+line, a point in the room, and the assets: it reads the wall's thickness,
+stands each piece flush with its front to the room, keeps doors, windows and
+corners clear and stops short of what already stands there. Check the first
+run of each family in a screenshot before lining the next wall, because it
+trusts the down-facing convention below.
+
+**Dress surfaces with `dress_surface`.** Books, candles and papers stay wholly
+inside the top, one layer above it, at their drawn size. A candle that should
+glow takes a `light` when you place it with place_objects instead.
 
 **A lived-in room is furnished in layers.** Write each room's layers into the
 plan and check each is present before calling the room done:

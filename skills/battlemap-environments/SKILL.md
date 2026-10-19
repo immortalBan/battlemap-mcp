@@ -25,11 +25,11 @@ Say the intended canopy size in tiles when you plan a treeline. A tree larger
 than the building beside it is a composition error, not a detail.
 
 **Keep canopies off the buildings.** A tree on a canopy layer (700 and up) draws
-over walls, windows and the room inside them, so its CENTRE must stand at least
-its canopy radius plus half the wall's thickness away from every wall. Inset a
-`scatter_objects` rectangle by that radius rather than drawing it up to the
-building: `scatter_objects` keeps its centres inside the rectangle, not its
-crowns. `validate_placements` reports a canopy over a wall under
+over walls, windows and the room inside them. Scatter trees with
+`scatter_objects(wall_margin=0)`, which keeps each object's whole reach — half
+its larger side, times its scale — off every wall, and `avoid_rects` for a
+road or a door's approach. Without them the rectangle bounds only the centres,
+not the crowns. `validate_placements` reports a canopy over a wall under
 `crossing_walls` and over a window under `blocking_portals`.
 
 Make the land readable before making it busy. Terrain layering, a dominant
