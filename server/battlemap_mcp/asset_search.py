@@ -11,8 +11,9 @@ easy to oversell:
 - it fixes word ORDER and separators ("double door" -> door_double_01)
 - it tolerates TYPOS ("tavren" -> tavern)
 - it does NOT do synonyms. "mug" will not find `tankard`, and "tableware" will
-  not find `food_bread_01`. Nothing here understands what a word means, so a
-  caller that draws a blank should search a broader term or list the category.
+  not find `food_bread_01`. Nothing here understands what a word means. The
+  tools retry a blank under asset_vocabulary's small table of interchangeable
+  names (mug -> tankard), but that is a fallback outside this ranking.
 """
 
 from __future__ import annotations

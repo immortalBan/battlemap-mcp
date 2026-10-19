@@ -51,8 +51,10 @@ The following is the public MCP tool surface; the companion may perform several 
 | `list_asset_categories` | — |
 | `list_asset_packs` | — |
 | `prepare_map_with_packs` | `filename`, `packs` |
-| `list_assets` | `category`, `search`, `limit`, `vanilla_only`, `match_mode`, `min_score`, `searches` |
+| `list_assets` | `category`, `search`, `limit`, `vanilla_only`, `match_mode`, `min_score`, `searches`, `pack` |
 | `preview_assets` | `assets`, `category`, `columns`, `cell_px` |
+| `annotate_assets` | `notes` |
+| `list_asset_notes` | `search`, `pack`, `role`, `limit` |
 | `repair_terrain` | `force` |
 | `validate_scene` | `samples`, `emitter_reach` |
 | `validate_floorplan` | `cell_woxels`, `min_room_tiles` |

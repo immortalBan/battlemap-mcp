@@ -46,7 +46,10 @@ without making every room equally accented.
    100, a scale chosen against the surface's measured footprint, and every
    edge within the surface's edge. A book pile wider than its table, a board
    over the table's lip, a candle off the corner of a desk and a tap past the
-   end of its tub all read as careless at token zoom. Table-top things stand
+   end of its tub all read as careless at token zoom. Read both sizes from
+   `list_assets` before choosing a scale: dressing is usually drawn at its real
+   size already, and a build that guessed 0.6 for books and candles got props
+   too small to read and replaced the whole batch. Table-top things stand
    on tables; a table candelabra on the floor is a misplacement, not a choice.
    `validate_placements` lists what reaches past its surface under
    `surface_overflow`.
@@ -235,7 +238,15 @@ check.
 **Hug the wall; do not approach it.** Being flush matters as much as facing.
 Compute the position from the wall's own coordinate, not from "near the
 wall": the wall line plus or minus half the asset's depth along the wall's
-normal, with the depth from `texture_size` times scale. Portraits, rails,
+normal, with the depth from `texture_size` times scale. A wall's line is its
+centre, so add half its thickness too — `list_assets(category='Walls')` gives
+each wall's `sizes` as [length, thickness]:
+
+    offset = wall_thickness / 2 + asset_depth * scale / 2
+
+For a 106-thick stone wall and a 143-deep bookcase that is 125 woxels. Where two
+runs meet at a corner, start the second run past the first one's footprint, or
+the end pieces overlap. Portraits, rails,
 benches, banners and lanterns half a tile out read as floating. Then read
 `adrift_fixtures` in `validate_placements`, which reports wall fixtures —
 torches, hangings, curtains, chimneys, windows and `Wall_` pieces — standing

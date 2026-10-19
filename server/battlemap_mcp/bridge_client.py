@@ -43,6 +43,7 @@ TOKEN_REJECTED = "bad or missing token"
 
 COMPANION_TOOLS = frozenset(
     {
+        "annotate_assets",
         "clear_captures",
         "export_dd2vtt",
         "get_export",
@@ -50,6 +51,7 @@ COMPANION_TOOLS = frozenset(
         "inspect_dungeondraft_installation",
         "inspect_map_file",
         "install_dungeondraft_bridge",
+        "list_asset_notes",
         "prepare_map_with_packs",
         "search_pack_contents",
         "validate_floorplan",

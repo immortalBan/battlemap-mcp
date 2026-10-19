@@ -35,6 +35,8 @@ from pydantic import ValidationError as PydanticValidationError
 
 from . import (
     arrangement,
+    asset_notes,
+    asset_vocabulary,
     handshake,
     installer,
     lifecycle,
@@ -838,11 +840,11 @@ def _candidate_terms(query: str, mode: str) -> list[str]:
     return words
 
 
-def _candidates(category: str, query: str, mode: str, vanilla_only: bool) -> dict:
+def _candidates(category: str, query: str, mode: str, vanilla_only: bool, marker: str = "") -> dict:
     """Paths worth scoring for this query, filtered in the bridge."""
     request: dict = {
         "category": category,
-        "terms": _candidate_terms(query, mode),
+        "terms": _candidate_terms(query, mode) + ([marker] if marker else []),
         "limit": RANK_CANDIDATE_LIMIT,
     }
     if vanilla_only:
@@ -878,6 +880,64 @@ def _colorable_paths(answer: dict) -> list[str]:
     return out
 
 
+SIZES_ARE = (
+    "[width, height] of each asset's texture in woxels at scale 1 (256 = one tile), "
+    "in the order of assets; multiply by scale. Walls: [length, thickness]. "
+    "null: not measured"
+)
+
+
+def _sizes_by_path(answer: dict) -> dict[str, Any]:
+    """The bridge's `sizes` keyed by path, so a reordered listing can be matched.
+
+    The bridge reports sizes aligned with ITS `assets`, which for an `only=`
+    request is category order, not the ranked order the caller sees. Older
+    bridges report none.
+    """
+    assets = list(answer.get("assets", []))
+    sizes = answer.get("sizes")
+    if not isinstance(sizes, list) or len(sizes) != len(assets):
+        return {}
+    return dict(zip(assets, sizes, strict=True))
+
+
+def _pack_marker(pack: str) -> str:
+    """The path fragment that confines a listing to one pack, by id or by name.
+
+    Only packs this map includes can be listed, so the name is resolved against
+    those; an unknown one is refused with the choices rather than returning an
+    empty listing that looks like "the pack has no such asset".
+    """
+    wanted = pack.strip()
+    if not wanted:
+        return ""
+    included = bridge.request("list_asset_packs").get("included_in_this_map", [])
+    for entry in included:
+        if wanted == str(entry.get("id")) or wanted.lower() == str(entry.get("name", "")).lower():
+            return f"packs/{str(entry.get('id')).lower()}/"
+    choices = ", ".join(f"{entry.get('id')} ({entry.get('name')})" for entry in included)
+    raise ValidationError(
+        f"this map includes no pack {wanted!r}; pass an id or name from: {choices or 'none'}"
+    )
+
+
+def _with_asset_facts(result: dict, *, sizes: dict[str, Any] | None = None) -> dict:
+    """Attach measured sizes and remembered notes to a listing, in its own order.
+
+    sizes: path -> [w, h] when the listing's order differs from the bridge's;
+    otherwise a `sizes` list already aligned with `assets` is kept as it is.
+    """
+    assets = list(result.get("assets", []))
+    if sizes is not None:
+        result["sizes"] = [sizes.get(path) for path in assets] if sizes else []
+    if not result.get("sizes"):
+        result.pop("sizes", None)
+    notes = asset_notes.indexed(assets)
+    if notes:
+        result["notes"] = notes
+    return result
+
+
 def _distinct_terms(searches: list[str]) -> list[str]:
     """The terms as given, minus blanks and repeats, order preserved."""
     seen: set[str] = set()
@@ -891,181 +951,22 @@ def _distinct_terms(searches: list[str]) -> list[str]:
     return terms
 
 
-def _list_assets_many(
+def _list_assets_single(
     category: str,
-    searches: list[str],
     search: str,
     limit: int,
     vanilla_only: bool,
     match_mode: str,
     min_score: float,
+    marker: str,
 ) -> dict:
-    """Several searches in one call, surveying the category at most once.
-
-    The saving is a round trip per term for the model, and — in the ranked
-    modes — one whole-category survey instead of one per term for the editor,
-    which is the expensive half. Every term still reports its own matches,
-    because merging them would hide which term found nothing.
-    """
-    if search:
-        raise ValidationError(
-            "pass either search or searches, not both — searches already takes a list"
-        )
-    terms = _distinct_terms(searches)
-    if not terms:
-        raise ValidationError("searches must hold at least one non-empty term")
-    if len(terms) > MAX_SEARCHES:
-        raise ValidationError(
-            f"{len(terms)} searches is past the {MAX_SEARCHES} one call runs; "
-            "split them, or search a broader term and read the listing"
-        )
-    require_positive(limit, "limit")
-    per_term = min(limit, max(1, MAX_MULTI_RESULTS // len(terms)))
-
-    out: dict = {"category": category, "match_mode": match_mode, "terms": terms}
-    results: dict[str, dict] = {}
-
-    if match_mode == "substring":
-        # The bridge filters substrings over the whole category, so each term is
-        # its own cheap request; there is nothing to reuse between them.
-        for term in terms:
-            params = {"category": category, "search": term, "limit": per_term}
-            if vanilla_only:
-                params["vanilla_only"] = True
-            answer = bridge.request("list_assets", **params)
-            results[term] = {
-                "matched": answer.get("matched", 0),
-                "returned": answer.get("returned", 0),
-                "assets": answer.get("assets", []),
-                "colorable": _colorable_indices(
-                    list(answer.get("assets", [])), set(_colorable_paths(answer))
-                ),
-                "colorable_scanned": answer.get("colorable_scanned", False),
-            }
-            for shared in ("total", "total_unfiltered", "hidden_unusable"):
-                out.setdefault(shared, answer.get(shared, 0))
-    else:
-        # One candidate filter per term, each bounded, instead of one transfer
-        # of the whole category for the call: the category is the thing that
-        # does not fit.
-        survey_complete = True
-        chosen: list[str] = []
-        for term in terms:
-            everything = _candidates(category, term, match_mode, vanilla_only)
-            surveyed = list(everything.get("assets", []))
-            for shared in ("total", "total_unfiltered", "hidden_unusable"):
-                out.setdefault(shared, everything.get(shared, 0))
-            if int(everything.get("matched", len(surveyed))) > len(surveyed):
-                survey_complete = False
-            matches = rank_assets(surveyed, term, mode=match_mode, min_score=min_score)
-            ranked = matches[:per_term]
-            results[term] = {
-                "matched": len(matches),
-                "returned": len(ranked),
-                "assets": [match.path for match in ranked],
-                "scores": [round(match.score, 3) for match in ranked],
-            }
-            chosen.extend(path for path in results[term]["assets"] if path not in chosen)
-
-        # One colour-mask scan for every winner, not one per term: the same asset
-        # can win for two terms, and the mask is a property of the asset.
-        colorable: set[str] = set()
-        scanned = True
-        if chosen:
-            detail = bridge.request(
-                "list_assets", category=category, only=chosen, limit=len(chosen)
-            )
-            colorable = set(_colorable_paths(detail))
-            scanned = bool(detail.get("colorable_scanned", False))
-        for entry in results.values():
-            entry["colorable"] = _colorable_indices(entry["assets"], colorable)
-            entry["colorable_scanned"] = scanned
-
-        out["survey_complete"] = survey_complete
-        if not survey_complete:
-            out["note"] = (
-                f"at least one term matched more than the {RANK_CANDIDATE_LIMIT} "
-                "candidates a ranked search scores, so better matches may exist that "
-                "were never scored. A term with no matches here is NOT a reliable "
-                "'not found' — use match_mode='substring', which filters in the bridge "
-                "over the whole category."
-            )
-
-    out["results"] = results
-    out["colorable_are"] = "indices into that term's assets"
-    out["per_term_limit"] = per_term
-    empty = [term for term, found in results.items() if not found["assets"]]
-    if empty:
-        shortfall = (
-            f"no asset matched {empty}. This is string matching, not meaning: widen the "
-            "term, or list the category to see what vocabulary it uses."
-        )
-        out["note"] = f"{out['note']} {shortfall}" if out.get("note") else shortfall
-    return out
-
-
-@tool()
-def list_assets(
-    category: str = "Objects",
-    search: str = "",
-    limit: int = 100,
-    vanilla_only: bool = False,
-    match_mode: str = "substring",
-    min_score: float = DEFAULT_MIN_SCORE,
-    searches: Annotated[
-        list[str] | None,
-        Field(
-            max_length=MAX_SEARCHES,
-            description=(
-                f"Up to {MAX_SEARCHES} terms looked up in one call, instead of `search`. "
-                "They share one budget of results, so more terms means fewer each."
-            ),
-        ),
-    ] = None,
-) -> dict:
-    """List asset paths in a category, optionally filtered by a case-insensitive substring.
-
-    category: e.g. 'Objects', 'Walls', 'Paths', 'Terrain', 'Lights', 'Portals', 'Roofs'.
-    search: substring matched against the asset path ('chair', 'door', 'grass').
-    Pass a returned path, verbatim, as the 'asset' of the create tools.
-
-    searches: up to 8 terms in one call instead of `search` — tables AND chairs
-    AND barrels. More than 8 is refused; split the call. Results come back
-    under `results`, keyed by term. Terms SHARE a budget of 80 paths, reported
-    as `per_term_limit`, so this is for choosing a handful, not reading the
-    catalogue. Pass `searches` or `search`, not both.
-
-    Results depend on the packs THIS MAP includes: none gives the ~1800 core
-    assets, a full library over a hundred thousand. If a search comes up thin,
-    search_pack_contents before concluding an asset does not exist.
-
-    `colorable` lists INDEXES into `assets` of assets with a colour mask: they
-    take `color` at placement, and the mask shows red without one. Colour
-    cannot be changed afterwards — check before choosing. `colorable_scanned`
-    false means the result was too large to scan: narrow the search.
-
-    match_mode: 'substring' (default, contiguous); 'tokens' (every word appears
-    anywhere, any order: "table round" finds round_table_01); 'fuzzy' (tokens
-    plus resemblance, so "barrle" lands; ranked, with `scores`). min_score is
-    the 0..1 cutoff for 'fuzzy'. None of these understand meaning — "mug" will
-    not find a tankard — so widen a term or list the category before
-    concluding something is absent.
-
-    vanilla_only: exclude optional packs, when native assets would otherwise be
-    crowded out of the result page.
-    """
-    require_choice(match_mode, list(MATCH_MODES), "match_mode")
-    if not 0.0 <= min_score <= 1.0:
-        raise ValidationError(f"min_score must be between 0 and 1, got {min_score}")
-    if searches is not None:
-        return _list_assets_many(
-            category, searches, search, limit, vanilla_only, match_mode, min_score
-        )
-
+    """One search exactly as asked: no vocabulary fallback, no notes."""
     if match_mode == "substring" or not search:
-        params = {"category": category, "search": search, "limit": limit}
+        params: dict = {"category": category, "search": search, "limit": limit}
         if vanilla_only:
             params["vanilla_only"] = True
+        if marker:
+            params["terms"] = [marker]
         return bridge.request("list_assets", **params)
 
     # Ranked modes need the whole category to rank over, which is more than the
@@ -1073,7 +974,7 @@ def list_assets(
     # the winners BY NAME. That second call is what keeps `colorable` populated
     # for the handful the caller actually chooses between, which matters
     # because colour is baked at placement and cannot be fixed afterwards.
-    everything = _candidates(category, search, match_mode, vanilla_only)
+    everything = _candidates(category, search, match_mode, vanilla_only, marker)
     surveyed = list(everything.get("assets", []))
     survey_complete = int(everything.get("matched", len(surveyed))) <= len(surveyed)
 
@@ -1123,6 +1024,9 @@ def list_assets(
     result["colorable_are"] = "indices into assets"
     result["colorable_scanned"] = detail.get("colorable_scanned", False)
     result["note"] = detail.get("note", "")
+    by_path = _sizes_by_path(detail)
+    if by_path:
+        result["sizes"] = [by_path.get(path) for path in result["assets"]]
     if not survey_complete:
         incomplete = (
             f"only {len(surveyed)} of {everything.get('matched')} candidate paths in "
@@ -1130,6 +1034,290 @@ def list_assets(
             "matches may exist that were never scored."
         )
         result["note"] = f"{incomplete} {result['note']}".strip()
+    return result
+
+
+def _other_word(
+    category: str,
+    term: str,
+    limit: int,
+    vanilla_only: bool,
+    match_mode: str,
+    min_score: float,
+    marker: str,
+) -> tuple[dict | None, str, list[str]]:
+    """Retry a term that found nothing under the words libraries use instead.
+
+    Returns the first listing that found something, the word that found it, and
+    every word tried. Alternatives are only ever tried after an empty result, so
+    a term that matched is never second-guessed.
+    """
+    tried: list[str] = []
+    for alternative in asset_vocabulary.alternatives(term):
+        tried.append(alternative)
+        found = _list_assets_single(
+            category, alternative, limit, vanilla_only, match_mode, min_score, marker
+        )
+        if found.get("assets"):
+            return found, alternative, tried
+    return None, "", tried
+
+
+def _list_assets_many(
+    category: str,
+    searches: list[str],
+    search: str,
+    limit: int,
+    vanilla_only: bool,
+    match_mode: str,
+    min_score: float,
+    marker: str = "",
+) -> dict:
+    """Several searches in one call, surveying the category at most once.
+
+    The saving is a round trip per term for the model, and — in the ranked
+    modes — one whole-category survey instead of one per term for the editor,
+    which is the expensive half. Every term still reports its own matches,
+    because merging them would hide which term found nothing.
+    """
+    if search:
+        raise ValidationError(
+            "pass either search or searches, not both — searches already takes a list"
+        )
+    terms = _distinct_terms(searches)
+    if not terms:
+        raise ValidationError("searches must hold at least one non-empty term")
+    if len(terms) > MAX_SEARCHES:
+        raise ValidationError(
+            f"{len(terms)} searches is past the {MAX_SEARCHES} one call runs; "
+            "split them, or search a broader term and read the listing"
+        )
+    require_positive(limit, "limit")
+    per_term = min(limit, max(1, MAX_MULTI_RESULTS // len(terms)))
+
+    out: dict = {"category": category, "match_mode": match_mode, "terms": terms}
+    results: dict[str, dict] = {}
+
+    if match_mode == "substring":
+        # The bridge filters substrings over the whole category, so each term is
+        # its own cheap request; there is nothing to reuse between them.
+        for term in terms:
+            params: dict = {"category": category, "search": term, "limit": per_term}
+            if vanilla_only:
+                params["vanilla_only"] = True
+            if marker:
+                params["terms"] = [marker]
+            answer = bridge.request("list_assets", **params)
+            results[term] = {
+                "matched": answer.get("matched", 0),
+                "returned": answer.get("returned", 0),
+                "assets": answer.get("assets", []),
+                "colorable": _colorable_indices(
+                    list(answer.get("assets", [])), set(_colorable_paths(answer))
+                ),
+                "colorable_scanned": answer.get("colorable_scanned", False),
+            }
+            measured = _sizes_by_path(answer)
+            if measured:
+                results[term]["sizes"] = [measured.get(p) for p in results[term]["assets"]]
+            for shared in ("total", "total_unfiltered", "hidden_unusable"):
+                out.setdefault(shared, answer.get(shared, 0))
+    else:
+        # One candidate filter per term, each bounded, instead of one transfer
+        # of the whole category for the call: the category is the thing that
+        # does not fit.
+        survey_complete = True
+        chosen: list[str] = []
+        for term in terms:
+            everything = _candidates(category, term, match_mode, vanilla_only, marker)
+            surveyed = list(everything.get("assets", []))
+            for shared in ("total", "total_unfiltered", "hidden_unusable"):
+                out.setdefault(shared, everything.get(shared, 0))
+            if int(everything.get("matched", len(surveyed))) > len(surveyed):
+                survey_complete = False
+            matches = rank_assets(surveyed, term, mode=match_mode, min_score=min_score)
+            ranked = matches[:per_term]
+            results[term] = {
+                "matched": len(matches),
+                "returned": len(ranked),
+                "assets": [match.path for match in ranked],
+                "scores": [round(match.score, 3) for match in ranked],
+            }
+            chosen.extend(path for path in results[term]["assets"] if path not in chosen)
+
+        # One colour-mask scan for every winner, not one per term: the same asset
+        # can win for two terms, and the mask is a property of the asset.
+        colorable: set[str] = set()
+        scanned = True
+        by_path: dict[str, Any] = {}
+        if chosen:
+            detail = bridge.request(
+                "list_assets", category=category, only=chosen, limit=len(chosen)
+            )
+            colorable = set(_colorable_paths(detail))
+            scanned = bool(detail.get("colorable_scanned", False))
+            by_path = _sizes_by_path(detail)
+        for entry in results.values():
+            entry["colorable"] = _colorable_indices(entry["assets"], colorable)
+            entry["colorable_scanned"] = scanned
+            if by_path:
+                entry["sizes"] = [by_path.get(path) for path in entry["assets"]]
+
+        out["survey_complete"] = survey_complete
+        if not survey_complete:
+            out["note"] = (
+                f"at least one term matched more than the {RANK_CANDIDATE_LIMIT} "
+                "candidates a ranked search scores, so better matches may exist that "
+                "were never scored. A term with no matches here is NOT a reliable "
+                "'not found' — use match_mode='substring', which filters in the bridge "
+                "over the whole category."
+            )
+
+    # A blank is retried under the words libraries use for the same thing,
+    # and the entry says which word matched so the swap is never silent.
+    for term, entry in results.items():
+        if entry["assets"]:
+            continue
+        found, used, tried = _other_word(
+            category, term, per_term, vanilla_only, match_mode, min_score, marker
+        )
+        if found is not None:
+            replacement = {
+                key: found[key]
+                for key in ("matched", "returned", "assets", "scores", "colorable", "sizes")
+                if key in found
+            }
+            replacement["colorable_scanned"] = found.get("colorable_scanned", False)
+            replacement["matched_with"] = used
+            results[term] = replacement
+        elif tried:
+            entry["also_tried"] = tried
+
+    for entry in results.values():
+        notes = asset_notes.indexed(list(entry["assets"]))
+        if notes:
+            entry["notes"] = notes
+        if not entry.get("sizes"):
+            entry.pop("sizes", None)
+
+    out["results"] = results
+    out["colorable_are"] = "indices into that term's assets"
+    if any("sizes" in entry for entry in results.values()):
+        out["sizes_are"] = SIZES_ARE
+    if any("notes" in entry for entry in results.values()):
+        out["notes_are"] = NOTES_ARE
+    out["per_term_limit"] = per_term
+    swapped = {
+        term: entry["matched_with"] for term, entry in results.items() if "matched_with" in entry
+    }
+    if swapped:
+        out["matched_with"] = swapped
+        swap_note = (
+            f"nothing matched {sorted(swapped)} as written; those results matched the "
+            "word shown under matched_with instead. Check they are the thing you meant."
+        )
+        out["note"] = f"{out['note']} {swap_note}" if out.get("note") else swap_note
+    empty = [term for term, found in results.items() if not found["assets"]]
+    if empty:
+        shortfall = (
+            f"no asset matched {empty}, nor the other words tried for them. This is "
+            "string matching, not meaning: widen the term, or list the category to "
+            "see what vocabulary it uses."
+        )
+        out["note"] = f"{out['note']} {shortfall}" if out.get("note") else shortfall
+    return out
+
+
+NOTES_ARE = (
+    "what earlier sessions recorded about these assets, keyed by index into assets; "
+    "add your own with annotate_assets"
+)
+
+
+@tool()
+def list_assets(
+    category: str = "Objects",
+    search: str = "",
+    limit: int = 100,
+    vanilla_only: bool = False,
+    match_mode: str = "substring",
+    min_score: float = DEFAULT_MIN_SCORE,
+    searches: Annotated[
+        list[str] | None,
+        Field(
+            max_length=MAX_SEARCHES,
+            description=(
+                f"Up to {MAX_SEARCHES} terms looked up in one call, instead of `search`. "
+                "They share one budget of results, so more terms means fewer each."
+            ),
+        ),
+    ] = None,
+    pack: str = "",
+) -> dict:
+    """List asset paths in a category, optionally filtered by a case-insensitive substring.
+
+    category: 'Objects', 'Walls', 'Paths', 'Terrain', 'Lights', 'Portals', 'Roofs'...
+    search: substring of the asset path ('chair', 'door'). Pass a returned path
+    verbatim as the 'asset' of the create tools.
+    searches: up to 8 terms in one call, results under `results` by term. They
+    SHARE 80 paths (`per_term_limit`): for choosing a handful. Not with `search`.
+    pack: only this included pack, by id or name — to stay in one art family.
+
+    `sizes`: [width, height] in woxels at scale 1 (256 = one tile; Walls:
+    [length, thickness]), in `assets` order. Choose scale and flush offsets from
+    it; no test placement needed.
+    `notes`: what earlier sessions recorded about an asset, by index. Read them;
+    record what a name does not say with annotate_assets.
+    A term matching nothing is retried under other names libraries use (rug ->
+    carpet, column -> pillar); `matched_with` names the word that matched.
+
+    Results depend on the packs THIS MAP includes. If a search comes up thin,
+    search_pack_contents before concluding an asset does not exist.
+
+    `colorable`: INDEXES of assets with a colour mask. They take `color` at
+    placement and show red without one; colour cannot be changed afterwards.
+    `colorable_scanned` false: too large to scan, narrow the search.
+
+    match_mode: 'substring' (default); 'tokens' (every word, any order: "table
+    round" finds round_table_01); 'fuzzy' (tokens plus resemblance, "barrle"
+    lands; ranked with `scores`, cutoff min_score 0..1).
+    vanilla_only: core assets only, when packs crowd them out.
+    """
+    require_choice(match_mode, list(MATCH_MODES), "match_mode")
+    if not 0.0 <= min_score <= 1.0:
+        raise ValidationError(f"min_score must be between 0 and 1, got {min_score}")
+    if pack and vanilla_only:
+        raise ValidationError(
+            "pack and vanilla_only exclude each other: vanilla_only keeps only core assets"
+        )
+    marker = _pack_marker(pack)
+    if searches is not None:
+        return _list_assets_many(
+            category, searches, search, limit, vanilla_only, match_mode, min_score, marker
+        )
+
+    result = _list_assets_single(
+        category, search, limit, vanilla_only, match_mode, min_score, marker
+    )
+    if search and not result.get("assets"):
+        found, used, tried = _other_word(
+            category, search, limit, vanilla_only, match_mode, min_score, marker
+        )
+        if found is not None:
+            found["matched_with"] = used
+            swap = (
+                f"nothing matched {search!r} as written; these matched {used!r}, a word "
+                "asset libraries use for the same thing. Check they are what you meant."
+            )
+            found["note"] = f"{swap} {found.get('note', '')}".strip()
+            result = found
+        elif tried:
+            result["also_tried"] = tried
+    _with_asset_facts(result)
+    if result.get("sizes"):
+        result["sizes_are"] = SIZES_ARE
+    if result.get("notes"):
+        result["notes_are"] = NOTES_ARE
     return result
 
 
@@ -1156,8 +1344,9 @@ def search_pack_contents(
     be running.
 
     Terms match asset paths and the pack's own tags. match_mode: 'tokens'
-    (every word, any order) or 'substring'. Not synonyms: "mug" will not find
-    a tankard.
+    (every word, any order) or 'substring'. A term that matches nothing is
+    retried under the words libraries use for the same thing (mug -> tankard);
+    the term's result then names the word under `matched_with`.
 
     Per term, `matched_by_pack` counts every match in each pack, and `best`
     holds the top paths (`limit` per term, 80 shared), grouped by pack.
@@ -1210,6 +1399,23 @@ def search_pack_contents(
         available = {pack_id: available[pack_id] for pack_id in packs}
 
     results = pack_contents.search(available, terms, category, mode=match_mode, limit=per_term)
+    # Same vocabulary fallback as list_assets: a blank is retried under the words
+    # libraries use for the same thing, and says which word matched.
+    for term in terms:
+        if results[term]["matched_by_pack"]:
+            continue
+        tried = []
+        for alternative in asset_vocabulary.alternatives(term):
+            tried.append(alternative)
+            retry = pack_contents.search(
+                available, [alternative], category, mode=match_mode, limit=per_term
+            )[alternative]
+            if retry["matched_by_pack"]:
+                results[term] = {**retry, "matched_with": alternative}
+                break
+        else:
+            if tried:
+                results[term]["also_tried"] = tried
     hit = sorted({pack_id for r in results.values() for pack_id in r["matched_by_pack"]})
     packs_found = {
         pack_id: {
@@ -1254,7 +1460,7 @@ def preview_assets(
     category: str = "Objects",
     columns: int = 4,
     cell_px: int = 128,
-) -> Image:
+) -> list[Image | str]:
     """LOOK at candidate assets before committing to one. Read-only.
 
     Asset names are not reliable descriptions: `bench_01` is a stone bench, and
@@ -1277,6 +1483,13 @@ def preview_assets(
     A thumbnail on a plain ground will not tell you how something reads against
     your floor under your lighting. It catches the gross mistake (stone where
     you wanted wood); the map render still settles the subtle one.
+
+    Every cell is fitted to the same square, so the sheet hides how big each
+    asset really is. The caption under it lists the cells in order with each
+    one's canvas and drawn area in woxels at scale 1 (256 = one tile) and any
+    note an earlier session recorded. When the sheet shows you something the
+    name does not say — a corner unit, a side-on drawing, an unexpectedly huge
+    canvas — record it with annotate_assets so the next session knows.
 
     assets: paths from list_assets or search_pack_contents, at most 32.
     category must match them.
@@ -1305,7 +1518,120 @@ def preview_assets(
     # file at all without looking at it.
     data = _wait_for_file(_capture_path(result.get("path"), "asset_preview.png"), timeout=10.0)
     _prune_captures()
-    return Image(data=data, format="png")
+    return [Image(data=data, format="png"), _preview_caption(list(assets), result)]
+
+
+def _preview_caption(assets: list[str], result: dict) -> str:
+    """One line per cell: its position, path, measured size and any recorded note."""
+    sizes = result.get("sizes") if isinstance(result.get("sizes"), dict) else {}
+    missing = set(result.get("missing", []))
+    notes = asset_notes.notes_for(assets)
+    lines = ["Cells, row-major; sizes in woxels at scale 1 (256 = one tile):"]
+    for index, asset in enumerate(assets, start=1):
+        line = f"{index}. {asset}"
+        measured = sizes.get(asset) if sizes else None
+        if asset in missing:
+            line += " — could not be loaded"
+        elif isinstance(measured, dict) and measured.get("size"):
+            width, height = measured["size"]
+            line += f" — {width}x{height}"
+            drawn = measured.get("opaque_rect")
+            if isinstance(drawn, list) and len(drawn) == 4:
+                left, top, drawn_w, drawn_h = (int(value) for value in drawn)
+                if (drawn_w, drawn_h) != (int(width), int(height)):
+                    line += f", drawn {drawn_w}x{drawn_h} at ({left},{top})"
+        note = notes.get(asset)
+        if note:
+            line += f" — note: {note['role'] + ': ' if note['role'] else ''}{note['note']}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+class AssetNote(BaseModel):
+    """One entry of annotate_assets: what to remember about one asset."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset: str
+    note: str
+    role: str = ""
+    category: str = ""
+
+
+@tool()
+def annotate_assets(notes: list[AssetNote]) -> dict:
+    """Remember what you learned about assets, for every later session.
+
+    An asset's name does not say what it is, and what one session discovers
+    the next would otherwise rediscover the slow way. Record a fact the moment
+    a preview, a placement or a render shows it — especially one that would
+    have changed your choice:
+
+      - its shape or use: "L-shaped corner unit, not a straight shelf"
+      - how it faces: "drawn side-on; does not read top-down"
+      - a surprise in size: "4 tiles long; a farm cart, not a book trolley"
+      - where a better one lives: "straight shelves are BYcn0rLD bookcase_01/02"
+
+    Notes are shown beside the asset by list_assets (`notes`) and
+    preview_assets (caption), and listed by list_asset_notes. They persist on
+    this computer across sessions and maps.
+
+    notes: up to 50 entries of {asset, note, role?, category?}.
+      asset: an exact path from list_assets or search_pack_contents.
+      note: one or two plain sentences, at most 500 characters. An EMPTY note
+        removes the asset's note — the way to correct one that proved wrong.
+      role: optional short label for what it is for: 'wall shelf',
+        'freestanding stack', 'table dressing', 'avoid'.
+      category: optional asset category ('Objects', 'Walls', ...).
+    Writing a note for an asset that has one replaces it.
+    """
+    if not notes:
+        raise ValidationError("notes must hold at least one {asset, note} entry")
+    if len(notes) > 50:
+        raise ValidationError(f"{len(notes)} notes is more than one call takes (max 50)")
+    changes = []
+    for entry in notes:
+        asset = entry.asset.strip()
+        if not asset.startswith("res://") or "\n" in asset:
+            raise ValidationError(
+                f"asset must be an exact res:// path from list_assets, got {entry.asset!r}"
+            )
+        if len(entry.note) > asset_notes.MAX_NOTE_CHARS:
+            raise ValidationError(
+                f"the note for {asset} is {len(entry.note)} characters; keep it to "
+                f"{asset_notes.MAX_NOTE_CHARS} — one or two sentences"
+            )
+        if len(entry.role) > asset_notes.MAX_ROLE_CHARS:
+            raise ValidationError(
+                f"role is a short label, at most {asset_notes.MAX_ROLE_CHARS} characters"
+            )
+        changes.append(
+            {"asset": asset, "note": entry.note, "role": entry.role, "category": entry.category}
+        )
+    outcome = asset_notes.apply(changes)
+    return {**outcome, "file": str(asset_notes.path())}
+
+
+@tool()
+def list_asset_notes(search: str = "", pack: str = "", role: str = "", limit: int = 100) -> dict:
+    """What earlier sessions recorded about assets, newest first. Read-only.
+
+    Read this when choosing a pack's assets, before searching: it is the
+    shortest way to the pieces that already proved right and away from the
+    ones that already proved wrong. Works without Dungeondraft running.
+
+    search: words that must all appear in the path, note or role.
+    pack: a pack id ('4YgtpczN'), to see one art family's notes.
+    role: only notes whose role contains this ('shelf', 'avoid').
+    """
+    require_positive(limit, "limit")
+    found = asset_notes.search(search, pack, role)
+    return {
+        "total": len(found),
+        "returned": min(len(found), limit),
+        "notes": found[:limit],
+        "file": str(asset_notes.path()),
+    }
 
 
 @tool()
