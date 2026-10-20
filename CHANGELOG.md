@@ -38,6 +38,14 @@ between its boulders; pools run in under the cliff foot; rock walls are laid
 so no stones are cut through where the line bends; and stairs go where
 someone needs to climb, not in a mirrored pattern.
 
+**No silent swaps for the pieces that matter.** Before building, your
+assistant finds an asset for every object the brief names. Missing set
+dressing is replaced and listed when the map is delivered. For a missing
+story piece, such as the cult's altar or the trap's mechanism, it asks you
+instead of guessing, and offers to build it from parts, recolour a near
+match, mark a stand-in with a label, or leave a placeholder described well
+enough to have the art made.
+
 **Fewer stray lines on the ground.** Your assistant avoids the thin dark seams
 that uneven terrain painting leaves under textured blending, the pale band
 a shadowed rock wall draws beside a cliff, and the seam left where two water
