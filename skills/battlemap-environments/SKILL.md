@@ -57,6 +57,17 @@ the base (sand and flagstone in a dry city, mud and grass in a wet one), how
 much grows and where — in a dry place, green only where someone waters it —
 and whether water is everyday or precious.
 
+**Judge the grass by its colour, not its name.** The base grass sets the
+season for the whole map. Summer grass is a saturated green; an olive or
+yellowed base makes an entire meadow read dead or parched, however lush the
+planting on top of it. Look at the candidates with
+`preview_assets(category='Terrain')`, then paint a small patch of the favourite
+and judge it in a screenshot before committing, because changing a slot's
+texture later changes everything already painted with it. Keep dirt to where
+feet actually go, and give a darker variant of the same grass a paintable slot
+for patches, hollows and the ground under trees, so the meadow has tone without
+changing material.
+
 1. Use `list_assets` to find only the terrain, water, vegetation and landmark
    families that fit the style bible.
 2. Establish terrain layering with broad ground regions first. Treat water and
@@ -66,7 +77,8 @@ and whether water is everyday or precious.
    uneven, overlapping soft strokes, vary its width, then interrupt parts of it
    with the base terrain. Use `get_terrain` on each side of the boundary and a
    screenshot to confirm deliberate material variation without obscuring the
-   intended water edge.
+   intended water edge. At a river or pond the band is the bank itself; see
+   [Rivers and waterfalls read by their edges](#rivers-and-waterfalls-read-by-their-edges).
 3. Place the largest silhouette next: a treeline mass, rock formation, ruin,
    cliff or water body that frames the focal event.
 4. Shape each route to lead to, through or around the focal event. Keep token
@@ -132,6 +144,17 @@ which is what a real verge looks like.
 along a seam they feather one material into the next. Use one where two grounds
 meet and the join still reads as a line someone drew.
 
+**Under textured blending, a step in weight draws a line.** With the level on
+textured blending (`set_terrain_blending(enabled=False)`), every hard step in
+a slot's weight renders as a thin dark seam: a region filled at `rate` 0.85
+beside one at 1.0 leaves an outline along the join that nobody drew. Fill
+neighbouring regions at the same rate, and soften a boundary with a few large,
+soft `paint_terrain` dabs rather than many small ones. The terrain splat is
+coarse — about 64 woxels per pixel on a typical map — so a dab under roughly
+200 woxels radius comes out as a blocky square instead of a soft disc. Smooth
+blending (`enabled=True`) has no seams but less grain; it is a per-level
+setting that redraws every edge already painted, so choose it before painting.
+
 ## Weathering is sparse brushwork
 
 Ground that has seen weather carries grit, sand or leaf litter where the wind
@@ -185,6 +208,118 @@ and sparse material detail after the route and entrance read clearly. Cave
 undo retains both bitmaps; select the original level before undoing, and do
 not try to restore cave history across a map resize.
 
+## Rivers and waterfalls read by their edges
+
+Water is recognised by its banks, not by the colour of its middle. A water body
+laid straight onto grass reads as a blue shape painted on a lawn; the same body
+with a cut bank and a band of shallows reads as a river at a glance. Build the
+edge in three parts, from the land inward:
+
+1. **An earth cut along both banks.** A thin brown band where the ground drops
+   to the water, drawn with `draw_path` along each shore. CrossHead packs ship
+   dirt-cliff paths for this, e.g. `terrain_dirt_cliff` in CH Seasons; find
+   what this map can use with `list_assets(category='Paths')` and
+   `search_pack_contents` for "cliff", "bank" and "edge".
+2. **A light shallows band just inside the edge.** A river-edge path drawn just
+   inside the waterline, such as `river_edge` from Into The Woods, so the water
+   pales where it is shallow. Judge it on the map before keeping it: over
+   `add_water` some edge paths read as a dark stripe down the channel instead,
+   and then the shallow colour of `set_water_style` does this job alone.
+3. **A darker deep middle.** `set_water_style(deep_color=..., shallow_color=...)`
+   after `add_water`, so the channel darkens away from the banks.
+
+**Keep the bed smooth.** Terrain painted under `add_water` shows through it, so
+gravel or cobbles under the water draw a cobbled riverbed across the whole
+channel. Leave plain earth or the base under the water and let rocks supply the
+texture. A wide gravel band along the shore is not how a bank is drawn either:
+the transition band at a river is the cut and the shallows, a tile or less, with
+the grass meeting the cut directly. Keep the cut thin — at about half its
+default width a dirt-cliff path reads as a bank; at full width it reads as a
+second cliff.
+
+**Keep the water one outline, and draw the banks last.** A second `add_water`
+that overlaps the first becomes a separate body with its own deep-to-shallow
+gradient, and the join shows as a seam or a diamond of deep colour in the
+middle of a pool. When the shape changes, erase the level's water
+(`add_water(rect=<whole map>, invert=True)`) and redraw one merged outline.
+Then draw the banks from that final outline, all walked the same way round it
+so the cut faces the water on every shore. Where a bank meets a cliff, a fall
+or a bridge, end it underneath that thing and set `fade_in` / `fade_out` on
+that end: a bank that stops square in the open reads as a cut-off stroke.
+
+**Rivers meander and change width.** A straight channel of even width reads as
+a canal. Let the river bend, narrow where it runs fast — at rapids, and at the
+crossing, which is why a bridge stands there — and widen into a round plunge
+pool under a fall. Give it what real water has: a tributary joining it, an
+island splitting the flow (`add_water(invert=True)` cuts one out), a slack bay
+on the inside of a bend. Draw the outline with `add_water(points=...)` and put
+that variation into the points; a `rect` is only ever a pool.
+
+**Rocks live in and at the water, in clusters.** A cluster is one large rock
+with two to four smaller ones against it. Put them where the water meets
+something: the outside of bends, the bridge abutments, the foot of a fall, with
+a scatter of small stones in the bed. Lay rock ledges across the stream where
+it steps down and give each a white foam line — search for "foam" or "splash"
+decals — so the water visibly breaks over it. A single big boulder alone on
+open grass reads as stamped, however well it is scaled.
+
+**Falls come from the terrain, so give a stream several.** A fall is where a
+stream crosses a tier line (see the next section). A stepped landscape gives one
+stream many small falls, each with its pool, its foam and its rocks at the
+foot, and that reads as land; one tall fall in the middle of flat ground reads
+as a set piece.
+
+**Fit the river to the waterfall art, not the art to the river.** A waterfall
+object is drawn for a channel of one particular width: CrossHead's falls stand
+between two stone pillars, and the water and the foam are drawn to start flush
+against their inner faces. If the river is narrower, a strip of grass and bank
+shows between the water and the stone and the fall looks pasted on. Measure the
+art first — in a `preview_assets` cell the scale is known exactly (cell width
+over texture width), which a screenshot's framing does not guarantee — and
+multiply by the object's scale. Then widen the river at the lip to the pillars'
+inner faces, tapering back to its normal width over three or four tiles
+upstream, and end the cliff paths and walls under the pillars rather than in
+the gap beside them.
+
+## Elevation is contour lines
+
+Height on a top-down map is drawn the way a survey map draws it: as continuous
+lines where the ground steps. Every terrace edge has to go somewhere — off the
+map edge, closed on itself around a rise, or into water. A cliff that stops in
+mid-field reads as a wall someone forgot to finish, because ground does not end
+a drop in open grass; if one must end, cap it with a spill of rubble and rocks
+so the eye accepts a slope down.
+
+- **Thick, layered faces read as height.** Draw a cliff two or three tiles
+  deep: a rock-top path along the lip over a rock-base path along the foot, or
+  a run of stone cliff objects. A single thin rock line reads as a kerb. Search
+  `list_assets(category='Paths')` and `search_pack_contents` for "cliff",
+  "rock" and "ledge", and preview a top and a base from one art family together.
+- **Draw cliff-lip walls with `shadow=False`.** A wall is what makes a cliff
+  block movement and sight in a VTT, but an outdoor rock wall drawn with the
+  default `shadow=True` lays a lighter, square-ended band about a tile wide
+  along one side, which reads as a strip of paving beside the cliff.
+- **Put a wall vertex every texture length.** A rock wall's texture is laid
+  in runs of its own length (`sizes` from `list_assets(category='Walls')`),
+  and at a vertex in the middle of a run the boulders are cut through. Resample
+  each cliff-lip polyline so its points fall one texture length apart.
+- **Paint earth under the whole cliff band.** Rock-top and rock-base paths are
+  boulders with gaps between them, and whatever terrain lies under the band
+  shows through those gaps — grass between the stones reads as holes in the
+  cliff. Fill the band, lip to foot, with a dark earth close to the rock's
+  colour, and a strip of darker grass along the foot reads as the cliff's
+  shadow.
+- **Water that meets a cliff runs in under it.** Where a pool touches a cliff
+  foot, extend the water up into the face so no grass shows between the two.
+  Push it toward the cliff only: grow the outline in every direction and it
+  spreads along the foot as straight-edged tongues.
+- **Stairs go into the face, not along it.** Cut a notch into the cliff and run
+  the steps perpendicular to the face, with a landing where they arrive, so a
+  token can see where the climb starts and ends. Place them where someone needs
+  to climb, not at matching positions on every tier: two staircases mirrored
+  across the map read as a pattern. Lead a worn track from each one to where it
+  goes, a camp or a road, and keep tree crowns off the top step.
+
 ## A crossing is one span, and water has to read as water
 
 A bridge is a single continuous span, or deliberately overlapping segments. Two
@@ -194,6 +329,15 @@ reviewer reads that as one bridge that failed rather than two that met.
 Check the span against the water, not against the gap you imagined: place it,
 then look. A crossing that stops short of either bank is worse than no bridge,
 because it says the map was never examined.
+
+Put the bridge where a builder would: perpendicular to the flow, at a narrow
+point, both ends resting on the banks, with rocks at its four corners where the
+abutments meet the water. Let the road widen to the bridge's width as it
+arrives rather than meeting it as a thinner line. Look at the bridge art first:
+some is drawn with a row of posts or piers across the middle of the span, which
+stands posts in the water wherever the river is wider than the art expected.
+Roads and tracks are 2-4 tiles wide, with soft verges painted into their edges
+rather than a ruled border.
 
 And confirm the water READS as water in a render. Under a dark ambient, a
 water body can come back as a grey-green band indistinguishable from shadowed
@@ -240,7 +384,14 @@ map will be wrong somewhere.
   singles spread evenly read as a texture someone applied.
 - **Give the ground evidence of a life.** A woodpile, a barrow, crates by a
   door, washing, a cart with its shafts down. One or two of these say more about
-  who lives here than another dozen shrubs.
+  who lives here than another dozen shrubs. An open encounter map needs the
+  same evidence to give the fight a reason: a camp (tents, a campfire,
+  crates), a ruin, a cart, a boat drawn up at a landing — beside the route, in
+  the clearing, where it explains why anyone stopped here. Lay its pieces out
+  from their real footprints: firewood placed on a ring around a fire can land
+  on a tent's canvas, and at map zoom that reads as a mistake, not a camp. Check
+  `stacked` in `validate_placements` and move anything resting on something it
+  could not stand on.
 
 - **A plant on hard ground needs a bed.** Soil, a planter or a kerbed border
   under every planted cluster on paving; plants straight on flagstone read as
@@ -250,8 +401,10 @@ map will be wrong somewhere.
   which cover the foliage itself; pack art often fills half its canvas, so
   positions and canvas `bounds` put the bed off centre.
 
-A quiet zone is sparse, not sterile: it still gets tufts and litter, just fewer,
-smaller, and further apart.
+Ground detail is a fine sprinkle, not a handful of big props: flower specks,
+grass tufts, the darker grass under trees, small and many. A quiet zone is
+sparse, not sterile: it still gets tufts and litter, just fewer, smaller, and
+further apart.
 
 **Planting has a register, and it should match who keeps the place.** A
 wealthy or formal property is groomed: clipped hedges, contained beds, plants
@@ -280,6 +433,14 @@ stamped however few there are — and a large `min_gap` in `scatter_objects`
 produces exactly that, because it enforces even spacing. To make a region
 sparse, place *fewer clusters* rather than the same count spread evenly: keep
 `min_gap` small inside a cluster and leave real ground between clusters.
+
+**Trees frame the map; the middle is the clearing.** Mass the canopy densely
+along the map edges and over the banks, crowns overlapping, varied in size and
+tone, so the woodland closes the frame and the open middle is left for combat.
+Every tree needs a cast shadow under it. Some packs ship the shadow as its own
+object — CrossHead's `tree_shadow_*`, for instance — to place under the crown
+and offset away from the light; search the vegetation families this map uses
+for "shadow". A crown with no shadow sits on the ground like a sticker.
 
 Hand-placed rocks, logs and plants need the same variation `scatter_objects`
 gives for free: a scale spread of about 0.85-1.15 at least, and angles off the

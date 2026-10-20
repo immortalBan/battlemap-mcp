@@ -65,6 +65,43 @@ and four rounds of test placements finding that out. In order:
    already says. A note that proved wrong is corrected the same way, or
    cleared with an empty note.
 
+**Find every named piece before you build, and never swap a story piece
+silently.** Make a list of every object the brief names or your plan depends
+on, and find an asset for each one now, in preflight. A piece that cannot be
+found halfway through the build forces a guess at the worst moment. Search
+past this map's packs too: `search_pack_contents` covers every installed pack,
+and the piece may be one `prepare_map_with_packs` away. Then sort what is
+missing into two kinds:
+
+- **Set dressing** — one more barrel, a different shrub, a crate of another
+  shape. Substitute the nearest thing that fits the art family, and list each
+  substitution when you deliver.
+- **Story pieces** — what the scene is about or what play depends on: the
+  cult's altar, the statue of the god, the trap's mechanism, the item the party
+  came for. Never replace one with something else on your own. A stand-in
+  that looks plausible is worse than a gap, because nobody notices that the
+  map now says something the brief did not.
+
+For each missing story piece, offer the user options in the round of questions
+below, and include a recommendation:
+
+1. **Compose it from parts.** An altar is a stone table, a cloth, candles and a
+   stain; a shrine is a plinth, an idol-sized statue and offerings. Many
+   pieces are assemblies, and a composed one can read better than a single
+   sprite.
+2. **Recolour a near match.** Assets listed under `colorable` take a `color`
+   at placement, so a banner, a rug or a cloak can be made the faction's
+   colours. The colour cannot be changed afterwards.
+3. **A labelled stand-in.** The closest asset with an `add_text` label naming
+   what it is, so the GM and the players know. Say that the label is part of
+   the map and should be hidden or deleted for a player-facing export.
+4. **Leave a marked placeholder for custom art.** Keep the space and a label
+   for it, and describe the sprite it needs: size in tiles, top-down, the
+   art family's line and palette, a transparent ground.
+
+If a story piece still turns up missing mid-build, stop and ask. This is the
+second exception to asking in one round, because guessing it would be wrong.
+
 **Load the build tools in one go.** Most battlemap tools are deferred. Fetch the
 set a build uses in a single `ToolSearch` select — the furnishing helpers
 `place_along_wall`, `seat_around`, `dress_surface`, the batch light tools for
@@ -125,7 +162,8 @@ none, and manufacturing questions to look thorough wastes a turn; a one-line
 brief ("make me a tavern") usually needs four or five. Ask only what you cannot
 decide — never which table asset to use, and never anything the style bible
 exists for you to settle. Do not drip-feed more questions mid-build; this round
-is what prevents that. The one planned exception is the taste check in phase 6.
+is what prevents that. The planned exceptions are the taste check in phase 6
+and a story piece that turns out to be missing mid-build (see above).
 
 **Choose the tools before you choose the assets.** Dungeondraft has several
 systems that produce a similar-looking result by different means, and picking
@@ -548,10 +586,23 @@ chose:
   framed screenshot before and after; undo it if it obscures useful detail.
   Both style fields can change in one undoable call. Read back with
   `get_map_style`, then verify the rendered effect rather than trusting a menu.
+- **Substitutions.** List every piece that is not what the brief named: the
+  set dressing you swapped, and each story piece with the option the user
+  chose (composed, recoloured, labelled stand-in, or placeholder awaiting
+  art). A placeholder's label stays on the map until the art arrives, so say
+  which exports carry it.
 - **Which outputs.** `export_map` renders the whole map without UI. A GM
   version and a player version are different files, not one file with a
   caveat. Ask whether they want the grid: sharing and VTTs that draw their
   own usually want `grid=False`.
-- **VTT.** Universal VTT export cannot be driven from here — it only runs from
-  Dungeondraft's own export window. If the user wants one, say so plainly and
-  hand it over rather than appearing to have produced it.
+- **VTT.** `export_dd2vtt` writes a Universal VTT file (`.dd2vtt`) beside the
+  saved map for Foundry, Roll20 or Arkenforge. It carries the map image, every
+  wall as a sight line broken at its doors and windows, the portals (a closed
+  door stays an openable door, an open one arrives as a window), the lights,
+  the ambient light, and an outline for each object with `block_light`. Run
+  `validate_floorplan` first and read `vtt_reversed_portals`. Read the reply's
+  counts back to the user. In particular, if `objects_line_of_sight` is 0 while
+  the map has light-blocking boulders or crates, nothing in the VTT will
+  block sight. A VTT treats every wall as blocking both movement and
+  sight, so say which walls are cliff lips that the user may want to retype
+  in their VTT, for example so archers can see down from a ledge.
