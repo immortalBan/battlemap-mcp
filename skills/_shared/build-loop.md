@@ -595,6 +595,14 @@ chose:
   version and a player version are different files, not one file with a
   caveat. Ask whether they want the grid: sharing and VTTs that draw their
   own usually want `grid=False`.
-- **VTT.** Universal VTT export cannot be driven from here — it only runs from
-  Dungeondraft's own export window. If the user wants one, say so plainly and
-  hand it over rather than appearing to have produced it.
+- **VTT.** `export_dd2vtt` writes a Universal VTT file (`.dd2vtt`) beside the
+  saved map for Foundry, Roll20 or Arkenforge. It carries the map image, every
+  wall as a sight line broken at its doors and windows, the portals (a closed
+  door stays an openable door, an open one arrives as a window), the lights,
+  the ambient light, and an outline for each object with `block_light`. Run
+  `validate_floorplan` first and read `vtt_reversed_portals`. Read the reply's
+  counts back to the user. In particular, if `objects_line_of_sight` is 0 while
+  the map has light-blocking boulders or crates, nothing in the VTT will
+  block sight. A VTT treats every wall as blocking both movement and
+  sight, so say which walls are cliff lips that the user may want to retype
+  in their VTT, for example so archers can see down from a ledge.

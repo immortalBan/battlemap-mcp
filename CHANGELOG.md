@@ -4,7 +4,7 @@ What changed in each release, written for the people using it. Versions cover
 the companion, the Dungeondraft mod and the map-making skills together; the
 wire protocol between them is versioned separately and is currently 25.
 
-## Unreleased (1.4.2)
+## 1.4.2 — 2026-10-20
 
 Outdoor maps look more like the professional ones they are measured against:
 rivers with real banks, height drawn as terraces, and woodland that frames the
@@ -45,6 +45,13 @@ story piece, such as the cult's altar or the trap's mechanism, it asks you
 instead of guessing, and offers to build it from parts, recolour a near
 match, mark a stand-in with a label, or leave a placeholder described well
 enough to have the art made.
+
+**Boulders and crates block sight in your VTT.** A Universal VTT export now
+carries an outline for every object set to block light. Before this fix the
+file held none, so in Foundry or Roll20 tokens could see straight through the
+cover. Your assistant also exports the `.dd2vtt` itself, reports what went
+into it, and tells you which walls are cliff edges you may want to make
+see-through.
 
 **Fewer stray lines on the ground.** Your assistant avoids the thin dark seams
 that uneven terrain painting leaves under textured blending, the pale band
